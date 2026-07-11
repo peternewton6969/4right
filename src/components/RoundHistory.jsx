@@ -12,6 +12,8 @@ import {
   resolveSkinsHole,
   resolveSideBets,
 } from '../engine/index.js';
+import { getPlayerName } from '../utils/playerUtils.js';
+import { withLegacyRoundFields } from '../utils/roundModel.js';
 import AppHeader from './AppChrome.jsx';
 
 // Screen 8: Round History (spec section 4.2).
@@ -114,11 +116,13 @@ export default function RoundHistory({ navigate }) {
   // Precompute a display view (settlement + winner) for each saved round.
   const rounds = useMemo(() => {
     const globalPlayers = getPlayers();
-    return getRounds().map((round) => {
+    return getRounds().map((saved) => {
+      // Derive legacy games/teams/payouts view fields for grouped-shape rounds.
+      const round = withLegacyRoundFields(saved);
       const course = courseForRound(round);
       // Prefer the names snapshotted at save time; fall back to current profiles.
       const nameById = {};
-      for (const p of globalPlayers) nameById[p.id] = p.name;
+      for (const p of globalPlayers) nameById[p.id] = getPlayerName(p);
       if (Array.isArray(round.players)) for (const p of round.players) nameById[p.id] = p.name;
       for (const pr of round.playerRounds) nameById[pr.playerId] ??= pr.name ?? 'Player';
 
