@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Source validation data (not production code)
+reference/July 3rd.xlsx
+
+# Claude Code local/machine-specific settings
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
