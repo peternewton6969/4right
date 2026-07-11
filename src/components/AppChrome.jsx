@@ -8,7 +8,7 @@ import { useState } from 'react';
 const NAV_LINKS = [
   { key: 'home', label: 'Home', route: 'home' },
   { key: 'players', label: 'Players', route: 'players' },
-  { key: 'new-round', label: 'New Round', route: 'players' },
+  { key: 'new-round', label: 'New Round', route: 'round/players' },
   { key: 'history', label: 'Round History', route: 'history' },
 ];
 
