@@ -25,7 +25,9 @@ const C = {
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'];
 
 const styles = {
-  // Transparent full-screen catcher: tapping outside the sheet dismisses.
+  // Transparent full-screen catcher: tapping outside the sheet dismisses. Callers
+  // can elevate a focused field above this (z-index 30 < elevated < 40) so a tap
+  // lands on that field — switching targets — instead of dismissing the keypad.
   backdrop: { position: 'fixed', inset: 0, background: 'transparent', zIndex: 30 },
   sheet: {
     position: 'fixed',
@@ -35,7 +37,7 @@ const styles = {
     background: C.bg,
     borderTop: `1px solid ${C.border}`,
     padding: '6px 8px calc(8px + env(safe-area-inset-bottom))',
-    zIndex: 31,
+    zIndex: 40,
   },
   doneRow: { display: 'flex', justifyContent: 'flex-end' },
   done: {

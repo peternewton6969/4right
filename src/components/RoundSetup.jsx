@@ -14,6 +14,7 @@ import {
 import { generateId } from '../utils/generateId.js';
 import { getPlayerName } from '../utils/playerUtils.js';
 import AppHeader from './AppChrome.jsx';
+import NumericKeypad from './NumericKeypad.jsx';
 
 // Screen 3: Round Setup. Single scrollable screen — date, course, games
 // (team / individual / junk), conditional team assignment, dynamic payouts —
@@ -227,22 +228,37 @@ function num(raw, fallback) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-/** One payout row with a focus-highlighted money input. */
-function PayoutRow({ label, value, onChange }) {
-  const [focused, setFocused] = useState(false);
+/** Accept a payout amount: up to 4 whole digits and up to 2 decimal places. */
+function acceptMoneyInput(raw) {
+  return /^\d{0,4}(\.\d{0,2})?$/.test(raw);
+}
+
+/**
+ * One payout row, driven by the shared custom NumericKeypad rather than a native
+ * keyboard. `active` lights the border while this field is being edited;
+ * `elevated` raises the field above the keypad's dismiss backdrop so tapping
+ * another row switches to it (rather than closing the keypad first).
+ */
+function PayoutRow({ label, value, active, onTap, elevated }) {
   return (
     <div style={styles.payoutRow}>
       <span style={styles.payoutLabel}>{label}</span>
-      <div style={styles.money(focused)}>
+      <div
+        style={{
+          ...styles.money(active),
+          ...(elevated ? { position: 'relative', zIndex: 35 } : null),
+        }}
+      >
         <span style={styles.dollar}>$</span>
         <input
-          style={styles.moneyInput}
+          style={{ ...styles.moneyInput, caretColor: C.green }}
           type="text"
-          inputMode="decimal"
+          inputMode="none"
+          readOnly
           value={value}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onChange={(e) => onChange(e.target.value)}
+          aria-label={`${label} payout`}
+          onFocus={onTap}
+          onClick={onTap}
         />
       </div>
     </div>
@@ -271,6 +287,7 @@ export default function RoundSetup({ navigate, playerIds }) {
   const [individualGames, setIndividualGames] = useState([]);
   const [junkGames, setJunkGames] = useState(() => JUNK_GAMES.map((g) => g.key)); // all on
   const [payouts, setPayouts] = useState(() => ({ ...PAYOUT_DEFAULTS }));
+  const [activePayout, setActivePayout] = useState(null); // key of field the keypad edits
   const [teams, setTeams] = useState(() => {
     // Default: first half of players to A, the rest to B.
     const half = Math.ceil(players.length / 2);
@@ -312,6 +329,17 @@ export default function RoundSetup({ navigate, playerIds }) {
   const toggleJunk = (key) =>
     setJunkGames((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
   const updatePayout = (key, value) => setPayouts((prev) => ({ ...prev, [key]: value }));
+
+  // Custom-keypad key handler: append a digit/'.' to the active payout field if
+  // the result is still a valid amount; 'back' deletes the last character.
+  function handleKeypadKey(key) {
+    if (activePayout == null) return;
+    setPayouts((prev) => {
+      const cur = prev[activePayout] ?? '';
+      if (key === 'back') return { ...prev, [activePayout]: cur.slice(0, -1) };
+      return acceptMoneyInput(cur + key) ? { ...prev, [activePayout]: cur + key } : prev;
+    });
+  }
 
   function handleStart() {
     if (!canStart) return;
@@ -535,7 +563,9 @@ export default function RoundSetup({ navigate, playerIds }) {
                   key={f.key}
                   label={f.label}
                   value={payouts[f.key]}
-                  onChange={(v) => updatePayout(f.key, v)}
+                  active={activePayout === f.key}
+                  elevated={activePayout !== null}
+                  onTap={() => setActivePayout(f.key)}
                 />
               ))}
             </div>
@@ -548,11 +578,20 @@ export default function RoundSetup({ navigate, playerIds }) {
           type="button"
           style={styles.start(canStart)}
           disabled={!canStart}
-          onClick={handleStart}
+          onClick={() => {
+            setActivePayout(null);
+            handleStart();
+          }}
         >
           Start Round
         </button>
       </div>
+
+      <NumericKeypad
+        open={activePayout !== null}
+        onKey={handleKeypadKey}
+        onDone={() => setActivePayout(null)}
+      />
     </>
   );
 }
