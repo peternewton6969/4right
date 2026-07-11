@@ -12,6 +12,8 @@ import {
   computeSnakeFinal,
   resolveSnake,
 } from '../engine/index.js';
+import { getPlayerName } from '../utils/playerUtils.js';
+import { withLegacyRoundFields } from '../utils/roundModel.js';
 import AppHeader from './AppChrome.jsx';
 
 // Screen 5: Score Entry, per hole.
@@ -59,13 +61,15 @@ function blankScore() {
 }
 
 export default function ScoreEntry({ navigate }) {
-  const [round, setRound] = useState(getActiveRound);
+  // Normalize on read so a freshly-created round (grouped shape) exposes the
+  // legacy games/teams/payouts fields this screen reads.
+  const [round, setRound] = useState(() => withLegacyRoundFields(getActiveRound()));
   const course = useMemo(() => (round ? courseForRound(round) : null), [round]);
 
   const players = useMemo(() => {
     if (!round) return [];
     const nameById = {};
-    for (const p of getPlayers()) nameById[p.id] = p.name;
+    for (const p of getPlayers()) nameById[p.id] = getPlayerName(p);
     return round.playerRounds.map((pr) => ({ ...pr, name: nameById[pr.playerId] ?? 'Player' }));
   }, [round]);
 

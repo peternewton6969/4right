@@ -14,6 +14,8 @@ import {
   computeSideBetTotals,
   resolveSideBets,
 } from '../engine/index.js';
+import { getPlayerName } from '../utils/playerUtils.js';
+import { withLegacyRoundFields } from '../utils/roundModel.js';
 import AppHeader from './AppChrome.jsx';
 
 // Screen 6: Scoreboard (spec section 4.2). Read-only. Reachable from any hole.
@@ -55,11 +57,11 @@ function money(n) {
 }
 
 export default function Scoreboard({ navigate }) {
-  const round = useMemo(getActiveRound, []);
+  const round = useMemo(() => withLegacyRoundFields(getActiveRound()), []);
   const course = useMemo(() => (round ? courseForRound(round) : null), [round]);
   const nameById = useMemo(() => {
     const map = {};
-    for (const p of getPlayers()) map[p.id] = p.name;
+    for (const p of getPlayers()) map[p.id] = getPlayerName(p);
     if (round) for (const pr of round.playerRounds) map[pr.playerId] ??= pr.name ?? 'Player';
     return map;
   }, [round]);

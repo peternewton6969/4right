@@ -7,6 +7,7 @@ import {
   loadDefaultCourses,
 } from '../storage/store.js';
 import { computeStrokeHolesSkins } from '../engine/index.js';
+import { getPlayerName } from '../utils/playerUtils.js';
 import AppHeader from './AppChrome.jsx';
 
 // Screen 4: Stroke Allocation Confirmation (spec section 4.2).
@@ -29,7 +30,7 @@ export default function StrokeConfirmation({ navigate }) {
   const course = useMemo(() => (round ? courseForRound(round) : null), [round]);
   const nameById = useMemo(() => {
     const map = {};
-    for (const p of getPlayers()) map[p.id] = p.name;
+    for (const p of getPlayers()) map[p.id] = getPlayerName(p);
     return map;
   }, []);
 
@@ -54,12 +55,13 @@ export default function StrokeConfirmation({ navigate }) {
   }
 
   // Recompute the skins stroke map per player so doubles (CH > 18) can be marked.
-  const rankByHole = Object.fromEntries(course.holes.map((h) => [h.number, h.hcpRank]));
+  // Stroke-hole lists display in sequential hole order (ascending hole number),
+  // not handicap-rank order.
   const rows = round.playerRounds.map((pr) => {
     const skinsMap = computeStrokeHolesSkins(pr.courseHandicap, course.holes);
     const skinsHoles = Object.keys(skinsMap)
       .map(Number)
-      .sort((a, b) => rankByHole[a] - rankByHole[b])
+      .sort((a, b) => a - b)
       .map((hole) => ({ hole, count: skinsMap[hole] }));
     return {
       playerId: pr.playerId,
@@ -67,7 +69,7 @@ export default function StrokeConfirmation({ navigate }) {
       handicapIndex: pr.handicapIndex,
       courseHandicap: pr.courseHandicap,
       differential: pr.differential,
-      matchPlayHoles: pr.strokeHolesMatchPlay,
+      matchPlayHoles: [...pr.strokeHolesMatchPlay].sort((a, b) => a - b),
       skinsHoles,
     };
   });
@@ -112,7 +114,7 @@ export default function StrokeConfirmation({ navigate }) {
 
               <div className="stroke-rows">
                 <div className="stroke-row">
-                  <span className="label">Match Play Strokes</span>
+                  <span className="label">Stroke Holes (Match Play)</span>
                   <div className="pill-row">
                     {r.matchPlayHoles.length === 0 ? (
                       <span className="stroke-pill is-none">None</span>
@@ -127,7 +129,7 @@ export default function StrokeConfirmation({ navigate }) {
                 </div>
 
                 <div className="stroke-row">
-                  <span className="label">Skins Strokes</span>
+                  <span className="label">Stroke Holes (Skins)</span>
                   <div className="pill-row">
                     {r.skinsHoles.map(({ hole, count }) => (
                       <span key={hole} className="stroke-pill">
