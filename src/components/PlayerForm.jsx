@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import AppHeader from './AppChrome.jsx';
+import NumericKeypad from './NumericKeypad.jsx';
 import { savePlayer, deletePlayer, getPlayerById } from '../storage/store.js';
 
 // Screen: Add / Edit Player. Reached from the Players roster via /players/new
@@ -92,24 +93,49 @@ function parseHandicap(raw) {
   return n;
 }
 
-/** One labeled input with focus/error styling and an optional helper slot. */
-function Field({ label, value, onChange, error, inputMode, placeholder, count, maxLength }) {
+/**
+ * One labeled input with focus/error styling and an optional helper slot.
+ *
+ * When `readOnly` + `onTap` are supplied the field is driven by our custom
+ * NumericKeypad instead of a native keyboard: inputMode "none" suppresses the OS
+ * keypad, and `active` keeps the focus ring lit while the keypad is open (the
+ * input itself may not hold DOM focus once the user taps keypad keys).
+ */
+function Field({
+  label,
+  value,
+  onChange,
+  error,
+  inputMode,
+  placeholder,
+  count,
+  maxLength,
+  readOnly = false,
+  onTap,
+  active = false,
+}) {
   const [focused, setFocused] = useState(false);
-  const borderColor = error ? C.danger : focused ? C.green : C.border;
+  const lit = active || focused;
+  const borderColor = error ? C.danger : lit ? C.green : C.border;
   return (
     <div>
       <label style={styles.label}>{label}</label>
       <input
-        style={{ ...styles.input, border: `1px solid ${borderColor}` }}
+        style={{ ...styles.input, border: `1px solid ${borderColor}`, caretColor: C.green }}
         type="text"
         value={value}
-        inputMode={inputMode}
+        inputMode={readOnly ? 'none' : inputMode}
         placeholder={placeholder}
         maxLength={maxLength}
+        readOnly={readOnly}
         autoComplete="off"
         autoCapitalize="words"
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          onTap?.();
+        }}
         onBlur={() => setFocused(false)}
+        onClick={onTap}
         onChange={(e) => onChange(e.target.value)}
       />
       <div style={styles.helperRow}>
@@ -137,6 +163,7 @@ export default function PlayerForm({ navigate, mode, playerId }) {
     existing?.handicapIndex != null ? Number(existing.handicapIndex).toFixed(1) : '',
   );
   const [errors, setErrors] = useState({});
+  const [keypadOpen, setKeypadOpen] = useState(false);
 
   const back = () => navigate('players');
 
@@ -184,6 +211,16 @@ export default function PlayerForm({ navigate, mode, playerId }) {
     if (value === '' || acceptHandicapInput(value)) setHandicap(value);
   }
 
+  // Custom-keypad key handler: 'back' deletes the last char; a digit or '.' is
+  // appended only if the result still satisfies the handicap input rule.
+  function handleKeypadKey(key) {
+    if (key === 'back') {
+      setHandicap((h) => h.slice(0, -1));
+      return;
+    }
+    setHandicap((h) => (acceptHandicapInput(h + key) ? h + key : h));
+  }
+
   return (
     <>
       <AppHeader
@@ -225,11 +262,21 @@ export default function PlayerForm({ navigate, mode, playerId }) {
             error={errors.handicap}
             placeholder="0.0"
             inputMode="decimal"
+            readOnly
+            active={keypadOpen}
+            onTap={() => setKeypadOpen(true)}
           />
         </div>
 
         <div style={styles.actions}>
-          <button type="button" style={styles.save} onClick={handleSave}>
+          <button
+            type="button"
+            style={styles.save}
+            onClick={() => {
+              setKeypadOpen(false);
+              handleSave();
+            }}
+          >
             Save Player
           </button>
           {editing && (
@@ -239,6 +286,12 @@ export default function PlayerForm({ navigate, mode, playerId }) {
           )}
         </div>
       </main>
+
+      <NumericKeypad
+        open={keypadOpen}
+        onKey={handleKeypadKey}
+        onDone={() => setKeypadOpen(false)}
+      />
     </>
   );
 }
