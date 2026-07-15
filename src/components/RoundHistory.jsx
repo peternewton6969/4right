@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   getRounds,
+  deleteRound,
   getPlayers,
   getCourses,
   loadDefaultCourses,
@@ -27,8 +28,9 @@ function courseForRound(round) {
 }
 
 function money(n) {
-  const sign = n > 0 ? '+' : n < 0 ? '-' : '';
-  return `${sign}$${Math.abs(n).toFixed(2)}`;
+  const v = Number.isFinite(n) ? n : 0; // guard against undefined columns -> $0.00, not $NaN
+  const sign = v > 0 ? '+' : v < 0 ? '-' : '';
+  return `${sign}$${Math.abs(v).toFixed(2)}`;
 }
 
 /** Format an ISO date (YYYY-MM-DD) as a short local date. */
@@ -37,6 +39,15 @@ function formatDate(iso) {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const TOTAL_HOLES = 18;
+
+/** Full-CH (skins) strokes a player receives on one hole — mirrors the engine. */
+function skinsStrokesForHole(courseHandicap, hcpRank) {
+  const base = Math.floor(courseHandicap / TOTAL_HOLES);
+  const remainder = courseHandicap % TOTAL_HOLES;
+  return base + (hcpRank <= remainder ? 1 : 0);
 }
 
 /** Final gross per player across every entered hole. */
@@ -91,15 +102,21 @@ function computeHoleDetails(round, course, perSkin) {
     prevHolder = holder;
 
     const gross = {};
-    for (const id of ids) {
+    const strokes = {};
+    for (const pr of playerRounds) {
+      const id = pr.playerId;
       const s = hs.scores?.[id];
       gross[id] = s?.gross ?? '—';
+      // Handicap strokes received on this hole (full-CH / skins allocation), so the
+      // group can see why a net birdie/eagle was awarded. May be 2 when CH laps 18.
+      strokes[id] = holeData ? skinsStrokesForHole(pr.courseHandicap, holeData.hcpRank) : 0;
     }
 
     return {
       holeNumber: hs.holeNumber,
       par: holeData?.par,
       gross,
+      strokes,
       skinWinner: skin.winner,
       skinsAwarded: skin.skinsAwarded,
       carried: !skin.winner,
@@ -112,6 +129,8 @@ function computeHoleDetails(round, course, perSkin) {
 
 export default function RoundHistory({ navigate }) {
   const [expanded, setExpanded] = useState(() => new Set());
+  const [pendingDelete, setPendingDelete] = useState(null); // { id, courseName, date } | null
+  const [version, setVersion] = useState(0); // bump to re-read history after a delete
 
   // Precompute a display view (settlement + winner) for each saved round.
   const rounds = useMemo(() => {
@@ -170,7 +189,8 @@ export default function RoundHistory({ navigate }) {
         holeDetails,
       };
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version]);
 
   function toggle(id) {
     setExpanded((prev) => {
@@ -179,6 +199,19 @@ export default function RoundHistory({ navigate }) {
       else next.add(id);
       return next;
     });
+  }
+
+  function confirmDelete() {
+    if (!pendingDelete) return;
+    const { id } = pendingDelete;
+    deleteRound(id);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setPendingDelete(null);
+    setVersion((v) => v + 1); // re-derive the list from storage
   }
 
   return (
@@ -223,7 +256,7 @@ export default function RoundHistory({ navigate }) {
                                 </span>
                               </div>
                               <div className="settle-breakdown">
-                                <span>MP {money(s.matchPlay)}</span>
+                                <span>MP {money(s.teamGame)}</span>
                                 <span>Skins {money(s.skins)}</span>
                                 <span>Snake {money(s.snake)}</span>
                                 <span>Side {money(s.sideBets)}</span>
@@ -267,12 +300,27 @@ export default function RoundHistory({ navigate }) {
                               </div>
 
                               <div className="hbh-gross">
-                                {r.playerIds.map((id) => (
-                                  <span key={id} className="hbh-cell">
-                                    <span className="hbh-name">{r.nameById[id].split(' ')[0]}</span>
-                                    <span className="hbh-score">{h.gross[id]}</span>
-                                  </span>
-                                ))}
+                                {r.playerIds.map((id) => {
+                                  const st = h.strokes?.[id] ?? 0;
+                                  return (
+                                    <span key={id} className="hbh-cell">
+                                      <span className="hbh-name">{r.nameById[id].split(' ')[0]}</span>
+                                      <span className="hbh-score">
+                                        {h.gross[id]}
+                                        {st > 0 && (
+                                          <sup
+                                            className="hbh-stroke"
+                                            title={`${st} handicap stroke${st > 1 ? 's' : ''} on this hole`}
+                                            aria-label={`${st} stroke${st > 1 ? 's' : ''}`}
+                                            style={{ color: '#22c55e', fontWeight: 700, marginLeft: 2 }}
+                                          >
+                                            {st > 1 ? '••' : '•'}
+                                          </sup>
+                                        )}
+                                      </span>
+                                    </span>
+                                  );
+                                })}
                               </div>
 
                               <div className="hbh-events">
@@ -303,6 +351,27 @@ export default function RoundHistory({ navigate }) {
                           Hole money = side bets + skins won. Match play and snake settle at round end.
                         </p>
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPendingDelete({ id: r.id, courseName: r.courseName, date: r.date })
+                        }
+                        style={{
+                          marginTop: 16,
+                          width: '100%',
+                          minHeight: 44,
+                          borderRadius: 10,
+                          background: 'transparent',
+                          border: '1px solid #ef4444',
+                          color: '#ef4444',
+                          fontSize: 15,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Delete Round
+                      </button>
                     </div>
                   )}
                 </section>
@@ -311,6 +380,32 @@ export default function RoundHistory({ navigate }) {
           </div>
         )}
       </main>
+
+      {/* Delete confirmation — permanent removal from history */}
+      {pendingDelete && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>Delete this round?</h2>
+            <p>
+              {pendingDelete.courseName} · {formatDate(pendingDelete.date)} will be permanently
+              removed from history. This cannot be undone.
+            </p>
+            <div className="modal-choices">
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ background: '#ef4444', color: '#fff' }}
+                onClick={confirmDelete}
+              >
+                Delete
+              </button>
+            </div>
+            <button type="button" className="modal-cancel" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

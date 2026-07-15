@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AppHeader from './AppChrome.jsx';
 import NumericKeypad from './NumericKeypad.jsx';
 import { savePlayer, deletePlayer, getPlayerById } from '../storage/store.js';
@@ -113,12 +113,13 @@ function Field({
   readOnly = false,
   onTap,
   active = false,
+  containerRef,
 }) {
   const [focused, setFocused] = useState(false);
   const lit = active || focused;
   const borderColor = error ? C.danger : lit ? C.green : C.border;
   return (
-    <div>
+    <div ref={containerRef}>
       <label style={styles.label}>{label}</label>
       <input
         style={{ ...styles.input, border: `1px solid ${borderColor}`, caretColor: C.green }}
@@ -164,6 +165,15 @@ export default function PlayerForm({ navigate, mode, playerId }) {
   );
   const [errors, setErrors] = useState({});
   const [keypadOpen, setKeypadOpen] = useState(false);
+  const handicapRef = useRef(null);
+
+  // Keyboard avoidance: when the keypad opens, scroll the handicap field into the
+  // visible area above the keypad sheet so the user can always see what they type.
+  useEffect(() => {
+    if (keypadOpen && handicapRef.current) {
+      handicapRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [keypadOpen]);
 
   const back = () => navigate('players');
 
@@ -230,7 +240,7 @@ export default function PlayerForm({ navigate, mode, playerId }) {
         onBack={back}
         active="players"
       />
-      <main style={styles.main}>
+      <main style={{ ...styles.main, paddingBottom: keypadOpen ? 360 : undefined }}>
         <div style={styles.fields}>
           <Field
             label="First Name"
@@ -265,6 +275,7 @@ export default function PlayerForm({ navigate, mode, playerId }) {
             readOnly
             active={keypadOpen}
             onTap={() => setKeypadOpen(true)}
+            containerRef={handicapRef}
           />
         </div>
 

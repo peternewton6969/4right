@@ -100,6 +100,7 @@ export default function ScoreEntry({ navigate }) {
   const [currentHole, setCurrentHole] = useState(initialHole);
   const [scores, setScores] = useState(() => scoresForHole(initialHole));
   const [snakePrompt, setSnakePrompt] = useState(false);
+  const [endPrompt, setEndPrompt] = useState(false);
 
   // Reload working scores whenever the selected hole changes (defaults to par).
   useEffect(() => {
@@ -162,6 +163,19 @@ export default function ScoreEntry({ navigate }) {
   }
   function toggleFlag(id, key) {
     setScores((prev) => ({ ...prev, [id]: { ...prev[id], [key]: !prev[id][key] } }));
+  }
+  // Greenie is single-select per hole (radio-button behavior): marking one player
+  // closest-to-pin clears every other player; tapping the marked player clears it.
+  // Matches the engine rule of at most one greenie winner per hole.
+  function toggleGreenie(id) {
+    setScores((prev) => {
+      const turningOn = !prev[id].closestOnParThree;
+      const next = {};
+      for (const pid of Object.keys(prev)) {
+        next[pid] = { ...prev[pid], closestOnParThree: turningOn && pid === id };
+      }
+      return next;
+    });
   }
   function goPrevHole() {
     setCurrentHole((h) => Math.max(1, h - 1));
@@ -259,10 +273,15 @@ export default function ScoreEntry({ navigate }) {
     cursor: 'pointer',
   };
 
-  const boardAction = (
-    <button type="button" className="hdr-action" onClick={() => navigate('scoreboard')}>
-      Board
-    </button>
+  const headerActions = (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <button type="button" className="hdr-action" onClick={() => navigate('scoreboard')}>
+        Board
+      </button>
+      <button type="button" className="hdr-action" onClick={() => setEndPrompt(true)}>
+        End
+      </button>
+    </div>
   );
 
   return (
@@ -274,7 +293,7 @@ export default function ScoreEntry({ navigate }) {
           tone="green"
           title={`Hole ${currentHole} — Par ${holeData.par}`}
           subtitle={`HCP ${holeData.hcpRank}`}
-          right={boardAction}
+          right={headerActions}
           active="new-round"
         />
 
@@ -403,7 +422,7 @@ export default function ScoreEntry({ navigate }) {
                         style={iconToggle(s.closestOnParThree)}
                         aria-pressed={s.closestOnParThree}
                         aria-label={`${p.name} closest to pin`}
-                        onClick={() => toggleFlag(p.playerId, 'closestOnParThree')}
+                        onClick={() => toggleGreenie(p.playerId)}
                       >
                         ⛳
                       </button>
@@ -494,6 +513,31 @@ export default function ScoreEntry({ navigate }) {
               className="modal-cancel"
               onClick={() => setSnakePrompt(false)}
             >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* End round early: settle on completed holes only */}
+      {endPrompt && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>End round after hole {round.holes.length}?</h2>
+            <p>Settlement will be calculated on completed holes only.</p>
+            <div className="modal-choices">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  setEndPrompt(false);
+                  navigate('settlement');
+                }}
+              >
+                End Round
+              </button>
+            </div>
+            <button type="button" className="modal-cancel" onClick={() => setEndPrompt(false)}>
               Cancel
             </button>
           </div>

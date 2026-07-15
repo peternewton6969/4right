@@ -229,6 +229,13 @@ export function getRoundById(id) {
   return getRounds().find((r) => r.id === id) ?? null;
 }
 
+/** Permanently remove a round from history by id. @returns {Array} the new history. */
+export function deleteRound(id) {
+  const next = getRounds().filter((r) => r.id !== id);
+  setRounds(next);
+  return next;
+}
+
 // --- Legacy player migration ---------------------------------------------------
 
 /**

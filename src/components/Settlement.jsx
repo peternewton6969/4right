@@ -170,6 +170,27 @@ export default function Settlement({ navigate }) {
     junkOn(round, 'sandy') ||
     junkOn(round, 'sandie');
 
+  // Configured payouts for this round's enabled games, always referenceable on the
+  // settlement screen (Bug 9).
+  const dollars = (n) => `$${(Number.isFinite(Number(n)) ? Number(n) : 0).toFixed(2)}`;
+  const flatPayouts = deriveFlatPayouts(round);
+  const payoutRows = [];
+  if (teamGame) {
+    payoutRows.push({
+      label: teamGame === 'scramble' ? 'Scramble' : 'Best Ball',
+      amount: dollars(flatPayouts.teamGame ?? flatPayouts.matchPlay),
+    });
+  }
+  if (showSkins) payoutRows.push({ label: 'Skins Pot', amount: dollars(flatPayouts.skinsPool) });
+  if (showWolf) payoutRows.push({ label: 'Wolf (per pt)', amount: dollars(flatPayouts.wolfPointValue) });
+  if (showSnake) payoutRows.push({ label: 'Snake', amount: dollars(flatPayouts.snake) });
+  if (junkOn(round, 'greenie')) payoutRows.push({ label: 'Greenie', amount: dollars(flatPayouts.greenie) });
+  if (junkOn(round, 'netBirdie')) payoutRows.push({ label: 'Net Birdie', amount: dollars(flatPayouts.netBirdie) });
+  if (junkOn(round, 'netEagle')) payoutRows.push({ label: 'Net Eagle', amount: dollars(flatPayouts.netEagle) });
+  if (junkOn(round, 'sandy') || junkOn(round, 'sandie')) {
+    payoutRows.push({ label: 'Sandie', amount: dollars(flatPayouts.sandie) });
+  }
+
   function handleSave() {
     if (saved) return;
     const now = new Date().toISOString();
@@ -275,6 +296,22 @@ export default function Settlement({ navigate }) {
                 </tbody>
               </table>
             </div>
+          </section>
+        )}
+
+        {payoutRows.length > 0 && (
+          <section className="card">
+            <h2 className="card-title">Payouts</h2>
+            <table className="table">
+              <tbody>
+                {payoutRows.map((row) => (
+                  <tr key={row.label}>
+                    <td className="t-name">{row.label}</td>
+                    <td className="t-num">{row.amount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </section>
         )}
 

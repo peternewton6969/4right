@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   getActiveRound,
   setActiveRound,
@@ -28,6 +28,17 @@ function courseForRound(round) {
 export default function StrokeConfirmation({ navigate }) {
   const round = useMemo(getActiveRound, []);
   const course = useMemo(() => (round ? courseForRound(round) : null), [round]);
+
+  // Always begin at the top so the user reads the allocations from the top down
+  // before tapping "Looks Good" (some browsers restore a prior scroll position).
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Whether this round has a team game — gates the match-play stroke section (Bug 8).
+  const teamGameSelected =
+    round?.teamGame != null ||
+    !!(round?.games && (round.games.matchPlay || round.games.bestBall || round.games.scramble));
   const nameById = useMemo(() => {
     const map = {};
     for (const p of getPlayers()) map[p.id] = getPlayerName(p);
@@ -113,20 +124,22 @@ export default function StrokeConfirmation({ navigate }) {
               </div>
 
               <div className="stroke-rows">
-                <div className="stroke-row">
-                  <span className="label">Stroke Holes (Match Play)</span>
-                  <div className="pill-row">
-                    {r.matchPlayHoles.length === 0 ? (
-                      <span className="stroke-pill is-none">None</span>
-                    ) : (
-                      r.matchPlayHoles.map((h) => (
-                        <span key={h} className="stroke-pill">
-                          {h}
-                        </span>
-                      ))
-                    )}
+                {teamGameSelected && (
+                  <div className="stroke-row">
+                    <span className="label">Stroke Holes (Match Play)</span>
+                    <div className="pill-row">
+                      {r.matchPlayHoles.length === 0 ? (
+                        <span className="stroke-pill is-none">None</span>
+                      ) : (
+                        r.matchPlayHoles.map((h) => (
+                          <span key={h} className="stroke-pill">
+                            {h}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="stroke-row">
                   <span className="label">Stroke Holes (Skins)</span>

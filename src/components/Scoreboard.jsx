@@ -127,6 +127,15 @@ export default function Scoreboard({ navigate }) {
 
     // Player scorecard: gross + net per hole, with OUT/IN/TOT.
     const enteredByHole = Object.fromEntries(entered.map((hs) => [hs.holeNumber, hs]));
+    // A hole counts toward running totals only once it is fully played — every
+    // player has a gross entered. Partially-entered/unplayed holes are excluded so
+    // cumulative totals never include future holes (Bug 5).
+    const holeComplete = {};
+    for (const h of course.holes) {
+      holeComplete[h.number] = round.playerRounds.every(
+        (pr) => enteredByHole[h.number]?.scores?.[pr.playerId]?.gross != null,
+      );
+    }
     const scorecard = round.playerRounds.map((pr) => {
       const cells = {};
       let out = 0;
@@ -139,6 +148,7 @@ export default function Scoreboard({ navigate }) {
         }
         const net = g - skinsStrokes(pr.courseHandicap, h.hcpRank);
         cells[h.number] = { gross: g, net };
+        if (!holeComplete[h.number]) continue; // exclude incomplete holes from totals
         if (h.number <= 9) out += g;
         else inn += g;
       }
@@ -167,6 +177,25 @@ export default function Scoreboard({ navigate }) {
   const teamNames = (side) => round.teams[side].map((id) => nameById[id]).join(' & ');
   const parByHole = Object.fromEntries(course.holes.map((h) => [h.number, h.par]));
   const orderedHoles = [...course.holes].map((h) => h.number).sort((a, b) => a - b);
+
+  // Configured payouts for the enabled games, so they stay referenceable mid-round
+  // without remembering what was set at setup (Bug 9).
+  const dollars = (n) => `$${(Number.isFinite(Number(n)) ? Number(n) : 0).toFixed(2)}`;
+  const pay = round.payouts || {};
+  const payoutRows = [];
+  if (games.matchPlay || games.bestBall || games.scramble) {
+    payoutRows.push({
+      label: round.teamGame === 'scramble' || games.scramble ? 'Scramble' : 'Best Ball',
+      amount: dollars(pay.teamGame ?? pay.matchPlay),
+    });
+  }
+  if (games.skins) payoutRows.push({ label: 'Skins Pot', amount: dollars(pay.skinsPool ?? pay.skins) });
+  if (games.wolf) payoutRows.push({ label: 'Wolf (per pt)', amount: dollars(pay.wolfPointValue) });
+  if (games.snake) payoutRows.push({ label: 'Snake', amount: dollars(pay.snake) });
+  if (games.greenie) payoutRows.push({ label: 'Greenie', amount: dollars(pay.greenie) });
+  if (games.netBirdie) payoutRows.push({ label: 'Net Birdie', amount: dollars(pay.netBirdie) });
+  if (games.netEagle) payoutRows.push({ label: 'Net Eagle', amount: dollars(pay.netEagle) });
+  if (games.sandie) payoutRows.push({ label: 'Sandie', amount: dollars(pay.sandie) });
 
   const closeBtn = (
     <button
@@ -288,6 +317,22 @@ export default function Scoreboard({ navigate }) {
                     ))}
                   </ul>
                 )}
+              </section>
+            )}
+
+            {payoutRows.length > 0 && (
+              <section className="card">
+                <h2 className="card-title">Payouts</h2>
+                <table className="table">
+                  <tbody>
+                    {payoutRows.map((row) => (
+                      <tr key={row.label}>
+                        <td className="t-name">{row.label}</td>
+                        <td className="t-num">{row.amount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </section>
             )}
 

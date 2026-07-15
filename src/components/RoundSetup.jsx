@@ -299,6 +299,12 @@ export default function RoundSetup({ navigate, playerIds }) {
   });
 
   // --- Derived state ---
+  // Team games need even sides. With 4 players that means a 2v2 the user assigns;
+  // with 2 players the only split is 1v1 (auto-assigned, no UI); with 3 players an
+  // even split is impossible, so team games are not offered at all (Bug 4).
+  const playerCount = players.length;
+  const teamGameAllowed = playerCount === 2 || playerCount === 4;
+  const showTeamAssignment = teamGame !== null && playerCount === 4;
   const teamGameSelected = teamGame !== null;
   const countA = players.filter((p) => teams[p.id] === 'A').length;
   const countB = players.length - countA;
@@ -456,29 +462,36 @@ export default function RoundSetup({ navigate, playerIds }) {
         <section style={styles.section}>
           <span style={styles.label}>Games</span>
 
-          {/* Team game */}
-          <span style={styles.sublabel}>Team Game</span>
-          <span style={styles.note}>Pick one or none</span>
-          <div style={styles.pairRow}>
-            {TEAM_GAMES.map((g) => {
-              const active = teamGame === g.key;
-              return (
-                <button
-                  key={g.key}
-                  type="button"
-                  style={styles.gameBtn(active)}
-                  aria-pressed={active}
-                  onClick={() => toggleTeamGame(g.key)}
-                >
-                  {active && <span>✓</span>}
-                  {g.label}
-                </button>
-              );
-            })}
-          </div>
+          {/* Team game — only offered when even teams are possible (2 or 4 players) */}
+          {teamGameAllowed && (
+            <>
+              <span style={styles.sublabel}>Team Game</span>
+              <span style={styles.note}>Pick one or none</span>
+              <div style={styles.pairRow}>
+                {TEAM_GAMES.map((g) => {
+                  const active = teamGame === g.key;
+                  return (
+                    <button
+                      key={g.key}
+                      type="button"
+                      style={styles.gameBtn(active)}
+                      aria-pressed={active}
+                      onClick={() => toggleTeamGame(g.key)}
+                    >
+                      {active && <span>✓</span>}
+                      {g.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {teamGameSelected && playerCount === 2 && (
+                <span style={styles.note}>1v1 — teams assigned automatically</span>
+              )}
+            </>
+          )}
 
-          {/* Team assignment (conditional) */}
-          {teamGameSelected && (
+          {/* Team assignment — only when the user must choose sides (4 players) */}
+          {showTeamAssignment && (
             <>
               <span style={styles.sublabel}>Team Assignment</span>
               <div>
