@@ -138,6 +138,12 @@ export function savePlayer(player) {
     lastName: player.lastName ?? '',
     nickname,
     handicapIndex,
+    // Character notes are an append-only log ([{ id, text, createdAt }]); the summary
+    // is the most recent AI-generated blurb. Preserve both across profile edits.
+    characterNotes: Array.isArray(player.characterNotes)
+      ? player.characterNotes
+      : (existing?.characterNotes ?? []),
+    characterSummary: player.characterSummary ?? existing?.characterSummary ?? '',
     createdAt: existing?.createdAt ?? player.createdAt ?? now,
     updatedAt: now,
   };
@@ -157,6 +163,47 @@ export function deletePlayer(id) {
 /** Look up a single player by id, or null. */
 export function getPlayerById(id) {
   return getPlayers().find((p) => p.id === id) ?? null;
+}
+
+// --- Character notes (append-only log + AI summary) ----------------------------
+//
+// Each player profile carries `characterNotes: [{ id, text, createdAt }]` (append
+// and delete only, never edited in place) and a `characterSummary` string (the most
+// recently generated blurb). These helpers mutate just those fields on an existing
+// player, leaving the rest of the profile untouched.
+
+/** Update one player in place by id via `mutate`, or return null if not found. */
+function updatePlayer(playerId, mutate) {
+  const roster = getPlayers();
+  const idx = roster.findIndex((p) => p.id === playerId);
+  if (idx < 0) return null;
+  const updated = { ...mutate(roster[idx]), updatedAt: new Date().toISOString() };
+  setPlayers(roster.map((p, i) => (i === idx ? updated : p)));
+  return updated;
+}
+
+/** Append a timestamped character note. Empty/blank text is ignored. @returns updated player | null */
+export function addCharacterNote(playerId, text) {
+  const trimmed = typeof text === 'string' ? text.trim() : '';
+  if (trimmed === '') return getPlayerById(playerId);
+  return updatePlayer(playerId, (p) => {
+    const notes = Array.isArray(p.characterNotes) ? p.characterNotes : [];
+    const note = { id: generateId(), text: trimmed, createdAt: new Date().toISOString() };
+    return { ...p, characterNotes: [...notes, note] };
+  });
+}
+
+/** Remove a single character note by its id. @returns updated player | null */
+export function deleteCharacterNote(playerId, noteId) {
+  return updatePlayer(playerId, (p) => {
+    const notes = Array.isArray(p.characterNotes) ? p.characterNotes : [];
+    return { ...p, characterNotes: notes.filter((n) => n.id !== noteId) };
+  });
+}
+
+/** Store the most recently generated AI character summary. @returns updated player | null */
+export function setCharacterSummary(playerId, summary) {
+  return updatePlayer(playerId, (p) => ({ ...p, characterSummary: String(summary ?? '') }));
 }
 
 // --- Round game-type vocabulary + validation -----------------------------------
@@ -269,6 +316,8 @@ export function migratePlayers() {
       lastName,
       nickname,
       handicapIndex: p.handicapIndex,
+      characterNotes: Array.isArray(p.characterNotes) ? p.characterNotes : [],
+      characterSummary: p.characterSummary ?? '',
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     };

@@ -83,6 +83,23 @@ const styles = {
     marginTop: 2,
   },
   empty: { textAlign: 'center', color: C.dim, fontSize: 16, padding: '64px 24px' },
+  rosterItem: { listStyle: 'none', display: 'grid', gap: 8 },
+  summaryCard: {
+    padding: '10px 14px',
+    background: C.surface,
+    border: `1px solid ${C.green}`,
+    borderRadius: 12,
+    display: 'grid',
+    gap: 4,
+  },
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    color: C.green,
+  },
+  summaryText: { fontSize: 14, color: C.text, lineHeight: 1.5, fontStyle: 'italic' },
   bottomBar: {
     position: 'fixed',
     left: 0,
@@ -188,34 +205,44 @@ function RosterRow({ player, onEdit, onDelete }) {
     onEdit(player);
   };
 
+  const summary = typeof player.characterSummary === 'string' ? player.characterSummary.trim() : '';
+
   return (
-    <li style={styles.row}>
-      <button
-        type="button"
-        style={styles.deleteBtn}
-        aria-label={`Delete ${player.firstName || getPlayerName(player)}`}
-        onClick={() => onDelete(player)}
-      >
-        Delete
-      </button>
-      <div
-        role="button"
-        tabIndex={0}
-        style={{
-          ...styles.card,
-          transform: `translateX(${dx}px)`,
-          transition: drag ? 'none' : 'transform 0.2s ease',
-        }}
-        onClick={onCardClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') onEdit(player);
-        }}
-        onTouchStart={(e) => handleStart(e.touches[0].clientX)}
-        onTouchMove={(e) => handleMove(e.touches[0].clientX)}
-        onTouchEnd={handleEnd}
-      >
-        <CardBody player={player} />
+    <li style={styles.rosterItem}>
+      <div style={styles.row}>
+        <button
+          type="button"
+          style={styles.deleteBtn}
+          aria-label={`Delete ${player.firstName || getPlayerName(player)}`}
+          onClick={() => onDelete(player)}
+        >
+          Delete
+        </button>
+        <div
+          role="button"
+          tabIndex={0}
+          style={{
+            ...styles.card,
+            transform: `translateX(${dx}px)`,
+            transition: drag ? 'none' : 'transform 0.2s ease',
+          }}
+          onClick={onCardClick}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') onEdit(player);
+          }}
+          onTouchStart={(e) => handleStart(e.touches[0].clientX)}
+          onTouchMove={(e) => handleMove(e.touches[0].clientX)}
+          onTouchEnd={handleEnd}
+        >
+          <CardBody player={player} />
+        </div>
       </div>
+      {summary !== '' && (
+        <div style={styles.summaryCard}>
+          <span style={styles.summaryLabel}>{getPlayerName(player)} according to the Captain</span>
+          <span style={styles.summaryText}>{summary}</span>
+        </div>
+      )}
     </li>
   );
 }

@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import AppHeader from './AppChrome.jsx';
 import NumericKeypad from './NumericKeypad.jsx';
-import { savePlayer, deletePlayer, getPlayerById } from '../storage/store.js';
+import {
+  savePlayer,
+  deletePlayer,
+  getPlayerById,
+  addCharacterNote,
+  deleteCharacterNote,
+  setCharacterSummary,
+} from '../storage/store.js';
+import { generateCharacterSummary, clearApiKey } from '../services/characterSummary.js';
 
 // Screen: Add / Edit Player. Reached from the Players roster via /players/new
 // (new mode) or /players/:id/edit (edit mode). Writes through storage/store.js's
@@ -77,7 +85,102 @@ const styles = {
     fontWeight: 700,
     cursor: 'pointer',
   },
+  // --- Character Notes section ---
+  notesSection: { marginTop: 28, display: 'grid', gap: 12 },
+  sectionTitle: { fontSize: 15, fontWeight: 800, color: C.text },
+  textarea: {
+    width: '100%',
+    minHeight: 84, // ~3 lines
+    padding: 12,
+    fontSize: 16,
+    lineHeight: 1.4,
+    color: C.text,
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    outline: 'none',
+    resize: 'vertical',
+    fontFamily: 'inherit',
+  },
+  addNote: {
+    justifySelf: 'start',
+    minHeight: 44,
+    padding: '0 20px',
+    border: 'none',
+    borderRadius: 10,
+    background: C.green,
+    color: '#0a1628',
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  notesLog: { listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 },
+  noteItem: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 12,
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+  },
+  noteText: { fontSize: 15, color: C.text, lineHeight: 1.4, whiteSpace: 'pre-wrap' },
+  noteDate: { fontSize: 12, color: C.dim, marginTop: 4 },
+  noteDelete: {
+    flex: '0 0 auto',
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    border: 'none',
+    background: 'transparent',
+    color: C.dim,
+    fontSize: 18,
+    lineHeight: 1,
+    cursor: 'pointer',
+  },
+  emptyNotes: { fontSize: 13, color: C.dim },
+  summaryBtn: {
+    justifySelf: 'start',
+    minHeight: 44,
+    padding: '0 20px',
+    borderRadius: 10,
+    background: 'transparent',
+    border: `1px solid ${C.green}`,
+    color: C.green,
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  summaryCard: {
+    padding: 14,
+    background: C.surface,
+    border: `1px solid ${C.green}`,
+    borderRadius: 12,
+    display: 'grid',
+    gap: 6,
+  },
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    color: C.green,
+  },
+  summaryText: { fontSize: 15, color: C.text, lineHeight: 1.5, fontStyle: 'italic' },
 };
+
+/** Format an ISO timestamp as a short local date + time. */
+function formatNoteDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
 /** Only accept up to 2 integer digits and one optional decimal (0.0 – 54.0 range). */
 function acceptHandicapInput(raw) {
@@ -167,6 +270,15 @@ export default function PlayerForm({ navigate, mode, playerId }) {
   const [keypadOpen, setKeypadOpen] = useState(false);
   const handicapRef = useRef(null);
 
+  // --- Character Notes (edit mode only; each op persists immediately) ---
+  const [notes, setNotes] = useState(() =>
+    Array.isArray(existing?.characterNotes) ? existing.characterNotes : [],
+  );
+  const [noteText, setNoteText] = useState('');
+  const [summary, setSummary] = useState(existing?.characterSummary ?? '');
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+
   // Keyboard avoidance: when the field is tapped and the keypad opens, scroll the
   // page so the field sits fully in the space *above* the keypad — no manual
   // scrolling by the user. scrollIntoView({block:'center'}) is not enough here: it
@@ -248,6 +360,42 @@ export default function PlayerForm({ navigate, mode, playerId }) {
     setHandicap((h) => (acceptHandicapInput(h + key) ? h + key : h));
   }
 
+  // --- Character Notes handlers (persist through store.js immediately) ---
+  function handleAddNote() {
+    if (!existing || noteText.trim() === '') return;
+    const updated = addCharacterNote(existing.id, noteText);
+    if (updated) setNotes(updated.characterNotes);
+    setNoteText('');
+  }
+
+  function handleDeleteNote(noteId) {
+    if (!existing) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('Remove this note?')) return;
+    const updated = deleteCharacterNote(existing.id, noteId);
+    if (updated) setNotes(updated.characterNotes);
+  }
+
+  async function handleGenerateSummary() {
+    if (!existing || notes.length === 0 || summarizing) return;
+    setSummarizing(true);
+    setSummaryError('');
+    try {
+      const text = await generateCharacterSummary(notes);
+      setCharacterSummary(existing.id, text);
+      setSummary(text);
+    } catch (err) {
+      // A 401 means the stored key is bad — drop it so the next try re-prompts.
+      if (err?.status === 401 || err?.status === 403) clearApiKey();
+      setSummaryError(err?.message || 'Could not generate a summary. Try again.');
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
+  // Notes newest-first for display; the stored log stays in chronological order.
+  const notesNewestFirst = [...notes].reverse();
+
   return (
     <>
       <AppHeader
@@ -295,6 +443,73 @@ export default function PlayerForm({ navigate, mode, playerId }) {
             containerRef={handicapRef}
           />
         </div>
+
+        {editing && (
+          <section style={styles.notesSection}>
+            <span style={styles.sectionTitle}>Character Notes</span>
+
+            {/* Part 1 — add a note */}
+            <textarea
+              style={styles.textarea}
+              rows={3}
+              value={noteText}
+              placeholder="Tap the mic on your keyboard to speak your mind. No filter required."
+              onChange={(e) => setNoteText(e.target.value)}
+              aria-label="New character note"
+            />
+            <button
+              type="button"
+              style={{ ...styles.addNote, opacity: noteText.trim() === '' ? 0.4 : 1 }}
+              disabled={noteText.trim() === ''}
+              onClick={handleAddNote}
+            >
+              Add Note
+            </button>
+
+            {/* Part 2 — existing notes, newest first */}
+            {notesNewestFirst.length === 0 ? (
+              <span style={styles.emptyNotes}>No notes yet. First one’s free.</span>
+            ) : (
+              <ul style={styles.notesLog}>
+                {notesNewestFirst.map((note) => (
+                  <li key={note.id} style={styles.noteItem}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={styles.noteText}>{note.text}</div>
+                      <div style={styles.noteDate}>{formatNoteDate(note.createdAt)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      style={styles.noteDelete}
+                      aria-label="Delete note"
+                      onClick={() => handleDeleteNote(note.id)}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Part 3 — AI summary */}
+            {notes.length > 0 && (
+              <button
+                type="button"
+                style={{ ...styles.summaryBtn, opacity: summarizing ? 0.5 : 1 }}
+                disabled={summarizing}
+                onClick={handleGenerateSummary}
+              >
+                {summarizing ? 'Generating…' : 'Generate Summary'}
+              </button>
+            )}
+            {summaryError !== '' && <span style={styles.error}>{summaryError}</span>}
+            {summary !== '' && (
+              <div style={styles.summaryCard}>
+                <span style={styles.summaryLabel}>Character Summary</span>
+                <span style={styles.summaryText}>{summary}</span>
+              </div>
+            )}
+          </section>
+        )}
 
         <div style={styles.actions}>
           <button
