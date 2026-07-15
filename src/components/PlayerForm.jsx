@@ -9,7 +9,12 @@ import {
   deleteCharacterNote,
   setCharacterSummary,
 } from '../storage/store.js';
-import { generateCharacterSummary, clearApiKey } from '../services/characterSummary.js';
+import {
+  generateCharacterSummary,
+  getApiKey,
+  setApiKey,
+  clearApiKey,
+} from '../services/characterSummary.js';
 
 // Screen: Add / Edit Player. Reached from the Players roster via /players/new
 // (new mode) or /players/:id/edit (edit mode). Writes through storage/store.js's
@@ -167,6 +172,19 @@ const styles = {
     color: C.green,
   },
   summaryText: { fontSize: 15, color: C.text, lineHeight: 1.5, fontStyle: 'italic' },
+  keyRow: { display: 'grid', gap: 8 },
+  keyInput: {
+    width: '100%',
+    minHeight: 48,
+    padding: '0 14px',
+    fontSize: 16,
+    color: C.text,
+    background: C.surface,
+    border: `1px solid ${C.border}`,
+    borderRadius: 12,
+    outline: 'none',
+    fontFamily: 'inherit',
+  },
 };
 
 /** Format an ISO timestamp as a short local date + time. */
@@ -278,6 +296,8 @@ export default function PlayerForm({ navigate, mode, playerId }) {
   const [summary, setSummary] = useState(existing?.characterSummary ?? '');
   const [summarizing, setSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState('');
+  const [needsKey, setNeedsKey] = useState(false); // show the inline API-key field
+  const [keyDraft, setKeyDraft] = useState('');
 
   // Keyboard avoidance: when the field is tapped and the keypad opens, scroll the
   // page so the field sits fully in the space *above* the keypad — no manual
@@ -376,21 +396,50 @@ export default function PlayerForm({ navigate, mode, playerId }) {
     if (updated) setNotes(updated.characterNotes);
   }
 
-  async function handleGenerateSummary() {
-    if (!existing || notes.length === 0 || summarizing) return;
+  // Run the API call against ALL accumulated notes (re-read from the store so we
+  // never summarize a stale subset).
+  async function runSummary() {
+    if (!existing) return;
+    const current = getPlayerById(existing.id);
+    const allNotes = Array.isArray(current?.characterNotes) ? current.characterNotes : notes;
     setSummarizing(true);
     setSummaryError('');
     try {
-      const text = await generateCharacterSummary(notes);
+      const text = await generateCharacterSummary(allNotes);
       setCharacterSummary(existing.id, text);
       setSummary(text);
     } catch (err) {
-      // A 401 means the stored key is bad — drop it so the next try re-prompts.
-      if (err?.status === 401 || err?.status === 403) clearApiKey();
-      setSummaryError(err?.message || 'Could not generate a summary. Try again.');
+      // Missing/rejected key -> show the inline key field instead of a native prompt.
+      if (err?.code === 'no_key' || err?.status === 401 || err?.status === 403) {
+        clearApiKey();
+        setNeedsKey(true);
+        setSummaryError(
+          err?.code === 'no_key' ? '' : 'That API key was rejected. Enter a valid key.',
+        );
+      } else {
+        setSummaryError(err?.message || 'Could not generate a summary. Try again.');
+      }
     } finally {
       setSummarizing(false);
     }
+  }
+
+  function handleGenerateSummary() {
+    if (!existing || notes.length === 0 || summarizing) return;
+    if (!getApiKey()) {
+      setNeedsKey(true); // collect the key inline, then the user taps Save & Generate
+      return;
+    }
+    runSummary();
+  }
+
+  function handleSaveKey() {
+    const trimmed = keyDraft.trim();
+    if (trimmed === '') return;
+    setApiKey(trimmed);
+    setKeyDraft('');
+    setNeedsKey(false);
+    runSummary();
   }
 
   // Notes newest-first for display; the stored log stays in chronological order.
@@ -501,6 +550,31 @@ export default function PlayerForm({ navigate, mode, playerId }) {
                 {summarizing ? 'Generating…' : 'Generate Summary'}
               </button>
             )}
+
+            {/* Inline API-key entry (replaces a native prompt, which breaks input on iOS) */}
+            {needsKey && (
+              <div style={styles.keyRow}>
+                <input
+                  type="password"
+                  style={styles.keyInput}
+                  value={keyDraft}
+                  placeholder="Anthropic API key (sk-ant-…)"
+                  onChange={(e) => setKeyDraft(e.target.value)}
+                  aria-label="Anthropic API key"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  style={{ ...styles.addNote, opacity: keyDraft.trim() === '' ? 0.4 : 1 }}
+                  disabled={keyDraft.trim() === ''}
+                  onClick={handleSaveKey}
+                >
+                  Save Key &amp; Generate
+                </button>
+                <span style={styles.emptyNotes}>Stored on this device only — never uploaded or committed.</span>
+              </div>
+            )}
+
             {summaryError !== '' && <span style={styles.error}>{summaryError}</span>}
             {summary !== '' && (
               <div style={styles.summaryCard}>

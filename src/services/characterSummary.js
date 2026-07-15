@@ -18,38 +18,39 @@ const SYSTEM_PROMPT =
   'say about someone he has played with for years. Respond with only the summary, ' +
   'no preamble.';
 
-/** Read the stored key; if absent, prompt for it once and cache it locally. */
-function getApiKey() {
-  let key = '';
+// The key is collected with an in-app input (see PlayerForm) and kept here — NOT a
+// native window.prompt(). Native dialogs (alert/confirm/prompt) are avoided in this
+// flow because on iOS Safari they can leave the page's text inputs unresponsive after
+// dismissal, which previously broke "add another note" after generating a summary.
+
+/** Read the stored API key, or '' if none is saved on this device. */
+export function getApiKey() {
   try {
-    key = localStorage.getItem(KEY_STORAGE) || '';
+    return localStorage.getItem(KEY_STORAGE) || '';
   } catch {
-    /* localStorage unavailable */
+    return '';
   }
-  if (!key) {
-    // eslint-disable-next-line no-alert
-    const entered = window.prompt(
-      'Enter your Anthropic API key to generate summaries.\nIt is stored only on this device.',
-    );
-    key = (entered || '').trim();
-    if (key) {
-      try {
-        localStorage.setItem(KEY_STORAGE, key);
-      } catch {
-        /* ignore write failure — key just won't persist */
-      }
-    }
-  }
-  return key;
 }
 
-/** Clear a stored key (e.g. after an auth error) so the next attempt re-prompts. */
-export function clearApiKey() {
+/** True when an API key is saved on this device. */
+export function hasApiKey() {
+  return getApiKey() !== '';
+}
+
+/** Save (or clear) the API key on this device. */
+export function setApiKey(key) {
+  const trimmed = typeof key === 'string' ? key.trim() : '';
   try {
-    localStorage.removeItem(KEY_STORAGE);
+    if (trimmed) localStorage.setItem(KEY_STORAGE, trimmed);
+    else localStorage.removeItem(KEY_STORAGE);
   } catch {
-    /* ignore */
+    /* ignore write failure — key just won't persist */
   }
+}
+
+/** Clear a stored key (e.g. after an auth error) so the UI re-collects it. */
+export function clearApiKey() {
+  setApiKey('');
 }
 
 /**
@@ -59,7 +60,11 @@ export function clearApiKey() {
  */
 export async function generateCharacterSummary(notes) {
   const key = getApiKey();
-  if (!key) throw new Error('An Anthropic API key is required to generate a summary.');
+  if (!key) {
+    const err = new Error('An Anthropic API key is required to generate a summary.');
+    err.code = 'no_key';
+    throw err;
+  }
 
   const list = notes.map((n, i) => `${i + 1}. ${n.text}`).join('\n');
   const userMessage = `${list}\n\nSummarize this player in two to three sentences.`;

@@ -345,7 +345,7 @@ This is a **profile** feature, independent of any round.
 - Model: **`claude-sonnet-4-6`** via the official `@anthropic-ai/sdk` (browser call, `dangerouslyAllowBrowser`).
 - **System prompt** instructs a two-to-three-sentence character summary of a golfer from partner-provided notes, in a **sarcastic, affectionate, locker-room** voice — "like something the smartest guy in the cart would say about someone he has played with for years," summary only, no preamble.
 - **User message** lists all notes as a numbered list, followed by "Summarize this player in two to three sentences."
-- **API key:** the app has no backend, so the key is entered once (prompted on first use) and stored in this device's `localStorage` under `fourright_anthropic_key` — never bundled into the build (which is public on GitHub Pages). A 401/403 clears the stored key so the next attempt re-prompts.
+- **API key:** the app has no backend, so the key is entered once via an **in-app key field** (an inline `password` input shown the first time you generate, and again after a rejected key) and stored in this device's `localStorage` under `fourright_anthropic_key` — never bundled into the build (which is public on GitHub Pages). A native `window.prompt` is deliberately **not** used: on iOS Safari a dismissed native dialog can leave the page's text inputs unresponsive, which would break "add another note" after generating a summary. A 401/403 clears the stored key and re-shows the field.
 
 ---
 
