@@ -13,10 +13,14 @@ const NAV_LINKS = [
 ];
 
 /** The left-slide navigation drawer opened by the hamburger. */
-function NavDrawer({ navigate, active, onClose }) {
+function NavDrawer({ navigate, active, onClose, menuActions }) {
   const go = (route) => {
     onClose();
     navigate(route);
+  };
+  const runAction = (action) => {
+    onClose();
+    action.onClick();
   };
   return (
     <>
@@ -37,6 +41,22 @@ function NavDrawer({ navigate, active, onClose }) {
             </button>
           ))}
         </div>
+        {/* Context actions for the current screen (e.g. End Round). Pinned to the
+            bottom so they read as distinct from navigation. */}
+        {menuActions.length > 0 && (
+          <div className="drawer-actions">
+            {menuActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className={`drawer-action${action.danger ? ' is-danger' : ''}`}
+                onClick={() => runAction(action)}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
     </>
   );
@@ -55,6 +75,8 @@ function NavDrawer({ navigate, active, onClose }) {
  * @param {'default'|'green'|'transparent'} [props.tone] - 'green' for active-round
  *   screens, 'transparent' to let a full-bleed background show through (Home)
  * @param {string} [props.active] - drawer link to highlight (nav key)
+ * @param {Array<{label:string, onClick:()=>void, danger?:boolean}>} [props.menuActions]
+ *   - screen-specific actions rendered at the bottom of the hamburger drawer
  */
 export default function AppHeader({
   navigate,
@@ -65,6 +87,7 @@ export default function AppHeader({
   right = null,
   tone = 'default',
   active,
+  menuActions = [],
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -111,7 +134,12 @@ export default function AppHeader({
       </header>
 
       {drawerOpen && (
-        <NavDrawer navigate={navigate} active={active} onClose={() => setDrawerOpen(false)} />
+        <NavDrawer
+          navigate={navigate}
+          active={active}
+          onClose={() => setDrawerOpen(false)}
+          menuActions={menuActions}
+        />
       )}
     </>
   );

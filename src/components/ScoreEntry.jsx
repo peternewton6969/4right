@@ -273,16 +273,16 @@ export default function ScoreEntry({ navigate }) {
     cursor: 'pointer',
   };
 
-  const headerActions = (
-    <div style={{ display: 'flex', gap: 8 }}>
-      <button type="button" className="hdr-action" onClick={() => navigate('scoreboard')}>
-        Board
-      </button>
-      <button type="button" className="hdr-action" onClick={() => setEndPrompt(true)}>
-        End
-      </button>
-    </div>
+  const boardAction = (
+    <button type="button" className="hdr-action" onClick={() => navigate('scoreboard')}>
+      Board
+    </button>
   );
+
+  // End Round lives in the hamburger drawer rather than the header: a vertical
+  // menu item always renders and is tappable on a narrow phone, where a second
+  // header action can be clipped off the right edge (Bug 6).
+  const menuActions = [{ label: 'End Round', danger: true, onClick: () => setEndPrompt(true) }];
 
   return (
     <>
@@ -293,7 +293,8 @@ export default function ScoreEntry({ navigate }) {
           tone="green"
           title={`Hole ${currentHole} — Par ${holeData.par}`}
           subtitle={`HCP ${holeData.hcpRank}`}
-          right={headerActions}
+          right={boardAction}
+          menuActions={menuActions}
           active="new-round"
         />
 

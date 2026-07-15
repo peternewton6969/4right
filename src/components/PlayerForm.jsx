@@ -181,11 +181,12 @@ export default function PlayerForm({ navigate, mode, playerId }) {
       const keypad = document.querySelector('[aria-label="Numeric keypad"]');
       const keypadH = keypad ? keypad.getBoundingClientRect().height : 360;
       const headerH = 56;
+      const breathingRoom = 24; // gap between the field's bottom and the keypad top
       const keypadTop = window.innerHeight - keypadH;
       const rect = el.getBoundingClientRect();
-      // Center the field vertically between the header bottom and the keypad top,
-      // never letting it slip under the sticky header.
-      const desiredTop = Math.max(headerH + 8, headerH + (keypadTop - headerH - rect.height) / 2);
+      // Lift the field so its whole box (label + input + value) sits above the
+      // keypad with breathing room; clamp so it never tucks under the sticky header.
+      const desiredTop = Math.max(headerH + 8, keypadTop - breathingRoom - rect.height);
       window.scrollBy({ top: rect.top - desiredTop, behavior: 'smooth' });
     });
     return () => cancelAnimationFrame(raf);
@@ -256,7 +257,7 @@ export default function PlayerForm({ navigate, mode, playerId }) {
         onBack={back}
         active="players"
       />
-      <main style={{ ...styles.main, paddingBottom: keypadOpen ? 360 : undefined }}>
+      <main style={{ ...styles.main, paddingBottom: keypadOpen ? '85vh' : undefined }}>
         <div style={styles.fields}>
           <Field
             label="First Name"
