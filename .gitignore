@@ -4,6 +4,11 @@ node_modules/
 # Build output
 dist/
 
+# Playwright (mobile smoke test) output
+test-results/
+playwright-report/
+.playwright/
+
 # Source validation data (not production code)
 reference/July 3rd.xlsx
 

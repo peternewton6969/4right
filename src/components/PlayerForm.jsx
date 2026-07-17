@@ -510,6 +510,13 @@ export default function PlayerForm({ navigate, mode, playerId }) {
               type="button"
               style={{ ...styles.addNote, opacity: noteText.trim() === '' ? 0.4 : 1 }}
               disabled={noteText.trim() === ''}
+              // iOS Safari: tapping this while the textarea is focused first blurs
+              // the field to dismiss the keyboard, and the follow-up click gets
+              // swallowed — so after the first note, "Add Note" silently does
+              // nothing. Preventing the default mousedown keeps focus on the
+              // textarea (keyboard stays up for the next note) and lets the click
+              // fire reliably. Same guard NumericKeypad uses for its keys.
+              onMouseDown={(e) => e.preventDefault()}
               onClick={handleAddNote}
             >
               Add Note
