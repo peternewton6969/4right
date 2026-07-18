@@ -90,3 +90,38 @@ test('appends a note when iOS updates the field without firing onChange (state d
   await expect(noteRows).toHaveCount(2);
   expect(await storedNoteCount(page)).toBe(2);
 });
+
+test('draft text survives a re-render (field is uncontrolled, not reset to stale state)', async ({
+  page,
+}) => {
+  await openEditScreen(page);
+  page.on('dialog', (d) => d.accept()); // the delete-note confirm
+
+  const field = page.locator(NOTE_FIELD);
+  const addNote = page.getByRole('button', { name: 'Add Note', exact: true });
+  const noteRows = page.getByRole('button', { name: 'Delete note' });
+
+  // Seed one note so there is something whose deletion forces a re-render.
+  await field.tap();
+  await field.fill('Aaron three-putted from four feet.');
+  await addNote.tap();
+  await expect(noteRows).toHaveCount(1);
+
+  // Put draft text in the field WITHOUT an onChange (the iOS dictation case), so
+  // React state has no knowledge of it.
+  await page.evaluate((sel) => {
+    document.querySelector(sel).value = 'A draft that must not vanish.';
+  }, NOTE_FIELD);
+
+  // Force a React re-render by deleting the existing note. A CONTROLLED field
+  // would be reset to its (empty) state value here, silently eating the draft —
+  // the exact class of failure behind the on-device bug. An uncontrolled field
+  // keeps what the user entered.
+  await noteRows.first().tap();
+  await expect(noteRows).toHaveCount(0);
+  await expect(field).toHaveValue('A draft that must not vanish.');
+
+  // And it still appends normally.
+  await addNote.tap();
+  await expect(noteRows).toHaveCount(1);
+});

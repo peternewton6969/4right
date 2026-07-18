@@ -292,8 +292,10 @@ export default function PlayerForm({ navigate, mode, playerId }) {
   const [notes, setNotes] = useState(() =>
     Array.isArray(existing?.characterNotes) ? existing.characterNotes : [],
   );
-  const [noteText, setNoteText] = useState('');
-  const noteInputRef = useRef(null); // read the live field value at tap time (see handleAddNote)
+  // The note field is UNCONTROLLED (no React `value`): on iOS a controlled value
+  // fights dictation/autocorrect and can wipe the field back to stale state on a
+  // re-render. This ref is the single source of truth for what the user entered.
+  const noteInputRef = useRef(null);
   const [summary, setSummary] = useState(existing?.characterSummary ?? '');
   const [summarizing, setSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState('');
@@ -383,18 +385,17 @@ export default function PlayerForm({ navigate, mode, playerId }) {
 
   // --- Character Notes handlers (persist through store.js immediately) ---
   function handleAddNote() {
-    // Read the note straight from the DOM node, not React state. On iOS Safari,
-    // dictation / autocorrect / predictive text can change the field without
-    // firing a timely onChange, so `noteText` state can still be '' at tap time
-    // even though text is visibly present. Reading the element's live value (with
-    // state as a fallback for keyboard/programmatic activation) sidesteps that
-    // desync entirely — the root cause of "Add Note does nothing after note one".
-    const text = (noteInputRef.current?.value ?? noteText).trim();
+    // Source of truth is the DOM node's live value, NOT React state. On iOS,
+    // keyboard / dictation / voice / autocorrect can change the field without a
+    // timely onChange, so any state-based check would see '' while text is
+    // visibly present. The empty-field guard lives here (not on a `disabled`
+    // prop), so the button is always tappable and simply no-ops when blank.
+    const field = noteInputRef.current;
+    const text = (field?.value ?? '').trim();
     if (!existing || text === '') return;
     const updated = addCharacterNote(existing.id, text);
     if (updated) setNotes(updated.characterNotes);
-    setNoteText('');
-    if (noteInputRef.current) noteInputRef.current.value = ''; // clear even if a render lags
+    if (field) field.value = ''; // clear the uncontrolled field directly
   }
 
   function handleDeleteNote(noteId) {
@@ -511,20 +512,17 @@ export default function PlayerForm({ navigate, mode, playerId }) {
               ref={noteInputRef}
               style={styles.textarea}
               rows={3}
-              value={noteText}
+              defaultValue=""
               placeholder="Tap the mic on your keyboard to speak your mind. No filter required."
-              onChange={(e) => setNoteText(e.target.value)}
               aria-label="New character note"
             />
             <button
               type="button"
-              style={{ ...styles.addNote, opacity: noteText.trim() === '' ? 0.4 : 1 }}
-              // Intentionally NOT disabled on `noteText.trim() === ''`. On iOS that
-              // state can lag the field's real content (dictation/autocorrect fire
-              // no timely onChange), which would leave the button disabled while
-              // text is visibly present, so the tap does nothing — this is the bug.
-              // The button stays tappable; handleAddNote reads the live field value
-              // and no-ops when it's genuinely blank.
+              // Always active — never disabled or greyed. Gating on React state left
+              // the button disabled on iOS while text was visibly present (state
+              // lags dictation/autocorrect). The empty-field guard is inside
+              // handleAddNote, which reads noteInputRef.current.value at tap time.
+              style={styles.addNote}
               onClick={handleAddNote}
             >
               Add Note
