@@ -1,8 +1,8 @@
-# 4 Right! -- Technical Specification v1.3
+# 4 Right! -- Technical Specification v1.4
 **App Name:** 4 Right!
-**Version:** 1.3 (single-user, local storage; Claude API used for one optional AI feature)
+**Version:** 1.4 (single-user, local storage; external APIs for the optional AI summary and course search)
 **Platform:** React SPA, mobile-first, deployed to GitHub Pages (custom domain `4right.app`)
-**Last Updated:** July 15, 2026
+**Last Updated:** July 19, 2026
 **Tagline:** Play Fair. Pay Up. Repeat.
 
 ---
@@ -50,14 +50,38 @@ signatures changed; the test suite remains 123 tests, all passing.
 
 ---
 
+## 0.3 Revisions Since v1.3 (Course Search + Analytics)
+
+Round Setup gains a full course-search experience, and a new analytics module
+instruments that flow with an admin dashboard. Test totals rose to **132 Vitest
+tests + 8 mobile WebKit tests**; the engine is unchanged.
+
+1. **Course search & fetch** — the old three hardcoded course buttons are replaced by a search + results + tee-selection flow (§1.2, §1.8, §4.2 Screen 3): after 3 characters, a debounced query to **OpenGolfAPI** (`api.opengolfapi.org`) returns matching courses (name, city, state); tapping a result loads the full scorecard **cache-first**, fetching from **golfApi.io** on a miss and caching the normalized scorecard by course id. The three **Prestonwood courses remain as verified, hardcoded "suggested" courses** that load instantly and bypass the API entirely.
+2. **Tee selection** — after a scorecard loads, a tee picker lets the user choose a tee set (name, rating, slope, yardage); the chosen tee resolves to the round-ready course shape (§1.2). Hardcoded courses skip tee selection (single implicit tee).
+3. **Course persistence** — a fetched/tee-resolved course is upserted into `fourright_courses` (`store.upsertCourse`) so every screen that resolves `round.courseId` via `getCourses()` keeps working unchanged.
+4. **Second external key** — the golfApi.io key is entered once via an inline in-app field (never `window.prompt`, for the same iOS reason as the Anthropic key) and stored in `localStorage` under `fourright_golfapi_key` (§1.8). API layer: `src/services/courseApi.js`. **The live OpenGolfAPI / golfApi.io response shapes are not verified against production; requests are coded against documented assumed shapes and normalized through `map*` helpers — adjust only those helpers if the real contract differs.**
+5. **Analytics module** — `src/utils/analytics.js`: `logEvent(type, data)` appends timestamped events to `localStorage` under `fourright_analytics`, capped at 1000, plus a pure `summarizeEvents()`. Instruments the course-selection funnel: search opened, first character typed, results displayed (count + source), course tapped, fetch started, fetch completed (duration ms + `cache`/`live` source), tee selection shown, tee selected, selection confirmed, selection abandoned (last step) (§1.8).
+6. **Analytics dashboard** — new admin screen at `#/analytics` (§4.2 Screen 9): average fetch time cache-vs-live, completion rate, abandonment by step, top courses, and the last 50 raw events, with a Clear action. Reached by URL; not linked from the app chrome.
+7. **Character Notes iOS fix** — the Add Note button is no longer `disabled` on empty React state and the note field is now **uncontrolled** (read via a ref at tap time). On iOS, dictation/autocorrect can update the field without a timely `onChange`, which previously left the button greyed/dead after the first note. The empty-field guard now lives inside the handler (§4.2 Screen 2).
+8. **Mobile test harness** — a Playwright + WebKit (iPhone 12 viewport) suite under `tests/mobile/` (`npm run test:mobile`) covers touch-only behavior the DOM-less Vitest suite can't: the Character Notes flow and the course-search flow (with the external APIs mocked at the network layer). Vitest excludes `tests/mobile/**`.
+
+---
+
 ## 1. Data Model
 
-All state lives in browser local storage. No backend. No auth. Four top-level keys:
+Most state lives in browser local storage. No backend. No auth. Core keys:
 
 - `fourright_players` -- player roster
-- `fourright_courses` -- course data
+- `fourright_courses` -- course data (pre-loaded Prestonwood set + on-demand fetched courses)
 - `fourright_rounds` -- round history
 - `fourright_active_round` -- current round in progress (mirrors the active entry in rounds)
+
+Plus, added for the course-search + analytics features (§1.8):
+
+- `fourright_course_cache` -- fetched scorecards, keyed by course id
+- `fourright_golfapi_key` -- golfApi.io API key (this device only)
+- `fourright_analytics` -- course-selection event log (capped at 1000)
+- `fourright_anthropic_key` -- Claude API key for the AI summary (this device only, §1.7)
 
 ---
 
@@ -118,12 +142,12 @@ All state lives in browser local storage. No backend. No auth. Four top-level ke
 ```
 
 **Rules:**
-- Three courses pre-loaded at build time: Prestonwood Meadows, Highlands, Fairways.
+- Three courses pre-loaded at build time: Prestonwood Meadows, Highlands, Fairways. These are the "suggested" verified courses in Round Setup and always load instantly.
+- **Additional courses are added on demand** via search + fetch (§1.8). A fetched course, once a tee is chosen, is normalized to this same shape and upserted into `fourright_courses` (`store.upsertCourse`) so all downstream screens resolve it by `round.courseId`. A resolved course also carries `teamName` and `yardage` for the chosen tee.
 - Each course has 18 holes.
-- hcpRank is 1-18, unique per course, no duplicates.
+- hcpRank is 1-18, unique per course (for fetched courses it is the tee's stroke index / hole handicap).
 - isParThree is derived from par === 3 but stored explicitly for query convenience.
-- Course data is read-only in v1. No UI to edit course data.
-- Rating and slope are used for course handicap calculation.
+- Rating and slope are used for course handicap calculation (for a fetched course, they come from the selected tee).
 
 ---
 
@@ -346,6 +370,66 @@ This is a **profile** feature, independent of any round.
 - **System prompt** instructs a two-to-three-sentence character summary of a golfer from partner-provided notes, in a **sarcastic, affectionate, locker-room** voice — "like something the smartest guy in the cart would say about someone he has played with for years," summary only, no preamble.
 - **User message** lists all notes as a numbered list, followed by "Summarize this player in two to three sentences."
 - **API key:** the app has no backend, so the key is entered once via an **in-app key field** (an inline `password` input shown the first time you generate, and again after a rejected key) and stored in this device's `localStorage` under `fourright_anthropic_key` — never bundled into the build (which is public on GitHub Pages). A native `window.prompt` is deliberately **not** used: on iOS Safari a dismissed native dialog can leave the page's text inputs unresponsive, which would break "add another note" after generating a summary. A 401/403 clears the stored key and re-shows the field.
+
+---
+
+### 1.8 Course Search, Cache & Analytics
+
+The course selection in Round Setup (§4.2 Screen 3) can pull any course, not just
+the three pre-loaded ones. Two external services are used (this is the app's second
+external dependency after the Claude summary), both called directly from the browser.
+
+**Search** — `GET https://api.opengolfapi.org/v1/courses/search?q={query}` (public, no
+key). Fired after 3+ characters, debounced. Normalized to `[{ id, name, city, state }]`.
+
+**Scorecard fetch** — cache-first. On tapping a result the app checks
+`fourright_course_cache[courseId]`; a hit is served immediately (`source: "cache"`),
+a miss fetches `GET https://api.golfapi.io/v1/courses/{id}` (with the golfApi.io key)
+and stores the normalized scorecard. The normalized scorecard shape:
+
+```json
+{
+  "id": "course-id",
+  "name": "Pebble Beach Golf Links",
+  "city": "Pebble Beach",
+  "state": "CA",
+  "tees": [
+    { "name": "Blue", "rating": 74.1, "slope": 143, "yardage": 6800, "par": 72,
+      "holes": [ { "number": 1, "par": 4, "hcpRank": 7, "isParThree": false } ] }
+  ]
+}
+```
+
+**Key & caveat:** the golfApi.io key is entered once via an inline in-app `password`
+field (never `window.prompt`) and stored under `fourright_golfapi_key`. A 401/403
+clears it and re-prompts. **The live OpenGolfAPI / golfApi.io response shapes are not
+verified against production** — requests are coded against the documented assumed
+shapes and funneled through the `mapSearchResults` / `mapScorecard` / `buildCourseFromTee`
+helpers in `src/services/courseApi.js`; if a live contract differs, only those helpers
+change. The app otherwise consumes the normalized shape above.
+
+**Analytics event log** (`src/utils/analytics.js`) — `logEvent(type, data)` appends a
+`{ type, t (epoch ms), iso, ...data }` record to `localStorage` under `fourright_analytics`,
+capped at the most recent **1000** events; it never throws (analytics must not break the
+flow it observes). `summarizeEvents(events)` is a pure reducer powering the dashboard
+(§4.2 Screen 9). Logged events across the course-selection funnel:
+
+| Event | Payload |
+|---|---|
+| `search_opened` | — |
+| `first_character_typed` | — |
+| `results_displayed` | `count`, `source` |
+| `course_tapped` | `courseName` |
+| `fetch_started` | `courseName` |
+| `fetch_completed` | `durationMs`, `source` (`cache` \| `live`) |
+| `tee_selection_shown` | `courseName` |
+| `tee_selected` | `teeName` |
+| `selection_confirmed` | `courseName`, `teeName`, `source` |
+| `selection_abandoned` | `lastStep` |
+
+Abandonment is logged when Round Setup unmounts after a selection step was reached
+without a confirm. Hardcoded (suggested) course picks log `source: "hardcoded"` and
+skip the fetch/tee events.
 
 ---
 
@@ -717,7 +801,7 @@ sideBets column: sum of the active junk bets (greenie / netBirdie / netEagle / s
 The engine must reproduce these results exactly before UI work begins.
 Source: July 3, 2026 -- Meadows AM round.
 
-**Suite status:** 123 tests across 10 files (engine + storage), all passing. Coverage includes courseHandicap, strokeHoles, matchPlay, skins, snake, sideBets, **scramble**, **wolf**, and **settlement** (legacy shape *and* the new grouped round shape, including scramble+wolf and a 3-player round), plus the storage/player-model tests. In this July 3 best-ball round the settlement `teamGame` column equals the "Match" figures below.
+**Suite status:** **132 Vitest tests** across 11 files (engine + storage + analytics), all passing, plus **8 mobile WebKit tests** (`tests/mobile/`, run via `npm run test:mobile`). Vitest coverage includes courseHandicap, strokeHoles, matchPlay, skins, snake, sideBets, **scramble**, **wolf**, and **settlement** (legacy shape *and* the new grouped round shape, including scramble+wolf and a 3-player round), the storage/player-model tests, and the **analytics** module (logEvent cap + `summarizeEvents`). In this July 3 best-ball round the settlement `teamGame` column equals the "Match" figures below.
 
 ---
 
@@ -892,7 +976,7 @@ The roster screen replaces the old fixed-four "Player Setup". It has **two modes
 
 **Character Notes** (edit mode only — a saved player must exist to attach notes to). A section below the Handicap Index field, in three parts (§1.7):
 
-1. **Add a note** — a multi-line text area (≥ 3 lines) with the placeholder "Tap the mic on your keyboard to speak your mind. No filter required." and an **Add Note** button (disabled while blank). Tapping it appends a timestamped entry via `addCharacterNote` and clears the field. This text area uses the **native** keyboard (the placeholder invites voice dictation) — unlike the handicap field's custom keypad.
+1. **Add a note** — a multi-line text area (≥ 3 lines) with the placeholder "Tap the mic on your keyboard to speak your mind. No filter required." and an **Add Note** button. Tapping it appends a timestamped entry via `addCharacterNote` and clears the field. This text area uses the **native** keyboard (the placeholder invites voice dictation) — unlike the handicap field's custom keypad. The field is **uncontrolled** and the button is **never disabled/greyed**: it reads the live value from the field's DOM node (a ref) at tap time and no-ops when actually blank. This is deliberate — on iOS, dictation/autocorrect can change the field without a timely React `onChange`, so gating the button on state left it dead after the first note (fixed in v1.4, §0.3).
 2. **Notes log** — existing notes in **reverse chronological order** (newest first). Each shows the text, the date it was added in small gray text below it, and a small **✕** delete button on the right. Delete prompts "Remove this note?"; on confirm it removes that entry via `deleteCharacterNote`. Append and delete only — no editing.
 3. **Generate Summary** — shown only when at least one note exists. Tapping it calls the Claude API (§1.7) with all notes and renders the result in a read-only card labeled "**Character Summary**", persisting it via `setCharacterSummary` so it survives and feeds the roster card and the future commentary engine. The button shows "Generating…" while in flight; each tap overwrites the previous summary. Errors surface inline in red.
 
@@ -905,7 +989,12 @@ No GHIN integration in v1. Manual entry only.
 Single scrollable screen for the 2-4 players passed from selection. Back arrow returns to player selection. Sections top to bottom:
 
 1. **Date** — surface card showing today formatted "Jul 8, 2026"; tap opens the native date picker. Stored as `YYYY-MM-DD`.
-2. **Course** — segmented control Meadows / Highlands / Fairways (active = green filled, inactive = secondary surface with border), full width, 56px segments.
+2. **Course** — a search-driven picker (`CoursePicker.jsx`, §1.8):
+   - **Suggested (verified)** — the three Prestonwood courses as chips; tapping one selects it instantly (no API, `source: "hardcoded"`), skipping tee selection.
+   - **Search** — a text input; after 3 characters a debounced query returns a tappable results list showing course **name** and **city, state**. (< 3 chars shows a "keep typing" hint.)
+   - **Fetch + tee selection** — tapping a result loads its scorecard cache-first (§1.8); if a live fetch is needed and no golfApi.io key is stored, an inline key field is collected first. Once loaded, a **tee list** shows each tee's name with rating · slope · yardage; tapping a tee resolves the round-ready course.
+   - **Selected state** — once a course + tee is chosen, a green-bordered summary card shows the course, tee, rating/slope, and par, with a **Change course** button to reset.
+   - Errors (search/fetch/rejected key) surface inline in red. Every step emits an analytics event (§1.8); leaving setup without confirming logs an abandonment.
 3. **Games**
    - **Team Game** ("Pick one or none"): `Best Ball | Scramble` toggle buttons — selecting one deselects the other; tapping a selected one turns it off. Selected = green filled with a checkmark. **The Team Game section is only shown when even teams are possible** — i.e. with **2 or 4 players**. With **3 players** the section is hidden entirely (a 3-player team game is impossible), leaving individual + junk games only.
    - **Team Assignment** — depends on player count:
@@ -1043,6 +1132,22 @@ Completed rounds are not otherwise editable in v1 (delete only).
 
 ---
 
+**Screen 9: Analytics (admin)**
+
+A read-only admin view at `#/analytics` (route `analytics` in App.jsx), reached by
+URL — **not** linked from the app chrome. Back arrow returns Home. Renders
+`summarizeEvents(getEvents())` over the `fourright_analytics` log (§1.8):
+
+- **Stat tiles:** average fetch time **live** and **cached** (ms, with fetch counts), **completion rate** (confirmed / (confirmed + abandoned), with the raw confirmed/abandoned counts), and **total events** (capped at 1000).
+- **Abandonment by step** — count of `selection_abandoned` grouped by `lastStep`, most first.
+- **Top courses selected** — count of `selection_confirmed` by `courseName`, most first.
+- **Last 50 events** — the raw tail, newest first, each with local timestamp, type, and payload.
+- **Clear analytics** — a red-outlined button that confirms, then empties the log.
+
+Component: `src/components/Analytics.jsx`.
+
+---
+
 ## 5. File Structure
 
 ```
@@ -1062,26 +1167,30 @@ fourright/
     components/
       Home.jsx
       Players.jsx            -- roster list; roster + select modes
-      PlayerForm.jsx         -- add/edit a player
-      RoundSetup.jsx
+      PlayerForm.jsx         -- add/edit a player (incl. Character Notes)
+      RoundSetup.jsx         -- uses CoursePicker; logs confirm/abandon analytics
+      CoursePicker.jsx       -- suggested + search + fetch/cache + tee selection (§1.8, §4.2 Screen 3)
       StrokeConfirmation.jsx
       ScoreEntry.jsx
       Scoreboard.jsx
       Settlement.jsx
       RoundHistory.jsx
+      Analytics.jsx          -- admin dashboard at /analytics (§4.2 Screen 9)
       AppChrome.jsx          -- shared header + navigation drawer (incl. per-screen menu actions)
       NumericKeypad.jsx      -- custom in-app numeric bottom-sheet keypad
     services/
       characterSummary.js    -- Claude API call (claude-sonnet-4-6) for the AI character summary
+      courseApi.js           -- OpenGolfAPI search + golfApi.io scorecard fetch, key mgmt, cache, normalizers (§1.8)
     utils/
       generateId.js
       playerUtils.js         -- getPlayerName / getPlayerFullName
       roundModel.js          -- withLegacyRoundFields: grouped-shape -> legacy games/teams/payouts view fields
+      analytics.js           -- logEvent (capped 1000, key fourright_analytics) + pure summarizeEvents (§1.8)
     storage/
       store.js               -- local storage read/write; player + round APIs
-                                (incl. deleteRound, character-notes helpers);
+                                (incl. deleteRound, character-notes helpers, upsertCourse);
                                 pre-loaded Prestonwood course data
-    App.jsx                  -- hash router (incl. /players, /round/players, /round/setup)
+    App.jsx                  -- hash router (incl. /players, /round/players, /round/setup, /analytics)
     main.jsx
     styles.css
   public/
@@ -1101,11 +1210,17 @@ fourright/
       settlement.test.js     -- legacy shape + new grouped shape (incl. 3-player)
     storage/
       store.test.js
-  package.json               -- runtime deps: react, react-dom, @anthropic-ai/sdk (AI summary)
-  vite.config.js             -- Vite for build, fast dev server
+    analytics.test.js        -- logEvent cap + summarizeEvents math
+    mobile/                  -- Playwright + WebKit (iPhone 12); run via npm run test:mobile
+      character-notes.spec.js
+      course-search.spec.js  -- full flow with the external APIs mocked
+  package.json               -- runtime deps: react, react-dom, @anthropic-ai/sdk; dev: vitest, @playwright/test
+  vite.config.js             -- Vite build + Vitest config (excludes tests/mobile/**)
+  playwright.config.js       -- mobile WebKit config; auto-starts a Vite dev server
 ```
 
-Total: 123 tests across 10 files (engine + storage suites), all passing.
+Total: **132 Vitest tests** across 11 files (engine + storage + analytics), all passing,
+plus **8 mobile WebKit tests** under `tests/mobile/` (`npm run test:mobile`).
 
 ---
 

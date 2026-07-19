@@ -73,7 +73,7 @@ async function openRoundSetup(page, { withKey = true } = {}) {
 }
 
 const analytics = (page) =>
-  page.evaluate(() => JSON.parse(localStorage.getItem('roastandrake_analytics') || '[]'));
+  page.evaluate(() => JSON.parse(localStorage.getItem('fourright_analytics') || '[]'));
 const types = (events) => events.map((e) => e.type);
 
 test('search → live fetch → tee select → confirm logs the full funnel', async ({ page }) => {

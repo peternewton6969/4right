@@ -1,12 +1,8 @@
 // Lightweight, dependency-free event logging for the course-selection flow, plus
 // a pure summarizer the /analytics dashboard renders. Everything lives in
 // localStorage (this app has no backend), capped so the log can't grow unbounded.
-//
-// NOTE: the storage key `roastandrake_analytics` is the one specified for this
-// feature; it does not follow the app's usual `fourright_` prefix. Kept as a
-// single constant so it is trivial to rename in one place if desired.
 
-const ANALYTICS_KEY = 'roastandrake_analytics';
+const ANALYTICS_KEY = 'fourright_analytics';
 const MAX_EVENTS = 1000;
 
 // Event type vocabulary — imported by the course-selection flow so the strings
