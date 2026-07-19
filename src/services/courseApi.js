@@ -1,62 +1,20 @@
-// Course search + scorecard fetch for Round Setup. Two external services are used
-// per the feature spec: OpenGolfAPI for name search, and golfApi.io for the full
-// scorecard (par / stroke index / rating / slope / tees). This app has no backend,
-// so calls go straight from the browser and the golfApi.io key lives in this
-// device's localStorage (same model as the Anthropic key in characterSummary.js).
+// Course search + scorecard fetch for Round Setup. Both use OpenGolfAPI (one
+// provider, so the id from search is valid for the detail call — mixing providers
+// caused the earlier 404). OpenGolfAPI is public and keyless (ODbL-licensed), so
+// there is no API key anywhere: nothing is entered by the user or embedded in the
+// build. This app has no backend; calls go straight from the browser.
 //
-// IMPORTANT: the exact JSON shapes of these third-party APIs are not verified here
-// (no key / unknown CORS at build time). Requests are coded against the documented
-// shapes below and normalized through the map* helpers — if the live contract
-// differs, adjust ONLY those helpers; the rest of the app consumes the normalized
-// shape { id, name, city, state, tees:[{ name, rating, slope, yardage, par, holes }] }.
+//   search:  GET https://api.opengolfapi.org/v1/courses/search?q={query}
+//   detail:  GET https://api.opengolfapi.org/api/v1/courses/{id}   (full scorecard)
+//
+// Responses are normalized through the map* helpers into the shape the app uses:
+//   { id, name, city, state, tees:[{ key, name, rating, slope, yardage, par, holes }] }
+// where holes are { number, par, hcpRank, isParThree }. If the live contract
+// shifts, adjust ONLY those helpers.
 
-const OPENGOLF_BASE = 'https://api.opengolfapi.org/v1';
-const GOLFAPI_BASE = 'https://www.golfapi.io/api/v2.3';
+const OPENGOLF_BASE = 'https://api.opengolfapi.org';
 
-const KEY_STORAGE = 'roastandrake_golfapi_key';
 const CACHE_STORAGE = 'roastandrake_course_cache'; // { [courseId]: normalizedScorecard }
-
-// --- golfApi.io key (entered once, kept on this device) ------------------------
-
-/**
- * Resolve the golfApi.io key. Prefers the build-time env var VITE_GOLFAPI_KEY (set
- * in .env) so the user never has to enter it; falls back to a key saved on this
- * device (local dev without .env, or a legacy stored key).
- *
- * SECURITY: Vite inlines VITE_* vars into the client bundle at build time, so on a
- * PUBLIC deploy the key is embedded in the shipped JS and extractable by anyone.
- * Use a usage-restricted / rotatable golfApi.io key.
- */
-export function getGolfApiKey() {
-  const envKey = import.meta.env?.VITE_GOLFAPI_KEY;
-  if (envKey) return String(envKey);
-  try {
-    return localStorage.getItem(KEY_STORAGE) || '';
-  } catch {
-    return '';
-  }
-}
-
-/** True when a golfApi.io key is saved on this device. */
-export function hasGolfApiKey() {
-  return getGolfApiKey() !== '';
-}
-
-/** Save (or clear) the golfApi.io key. */
-export function setGolfApiKey(key) {
-  const trimmed = typeof key === 'string' ? key.trim() : '';
-  try {
-    if (trimmed) localStorage.setItem(KEY_STORAGE, trimmed);
-    else localStorage.removeItem(KEY_STORAGE);
-  } catch {
-    /* ignore write failure */
-  }
-}
-
-/** Clear a stored key (e.g. after an auth error) so the UI re-collects it. */
-export function clearGolfApiKey() {
-  setGolfApiKey('');
-}
 
 // --- Scorecard cache (localStorage, keyed by course id) ------------------------
 
@@ -109,40 +67,46 @@ function mapHoles(rawHoles) {
     return {
       number: Number(firstDefined(h.number, h.holeNumber, h.hole, i + 1)),
       par,
-      hcpRank: Number(firstDefined(h.strokeIndex, h.handicap, h.hcp, h.index, i + 1)),
+      // OpenGolfAPI carries the stroke index as `handicap_index`.
+      hcpRank: Number(
+        firstDefined(h.handicap_index, h.strokeIndex, h.stroke_index, h.handicap, h.hcp, h.index, i + 1),
+      ),
       isParThree: par === 3,
     };
   });
 }
 
 /**
- * Map a scorecard response into { id, name, city, state, tees:[...] }. Each tee is
- * { name, rating, slope, yardage, par, holes:[{number,par,hcpRank,isParThree}] }.
- * Hole data may live per-tee or at course level; par falls back to the sum of hole pars.
+ * Map an OpenGolfAPI detail response into { id, name, city, state, tees:[...] }.
+ * Per-course holes live in `holes_data`; `tees` carry rating/slope/yardage/par but
+ * no holes, so every tee shares the same holes (stroke index is per course). Each
+ * tee is { key, name, rating, slope, yardage, par, holes:[{number,par,hcpRank,isParThree}] }.
  */
 export function mapScorecard(json, fallbackId) {
-  const courseHoles = mapHoles(firstDefined(json?.holes, json?.scorecard, []));
+  const holes = mapHoles(firstDefined(json?.holes_data, json?.holes, json?.scorecard, []));
+  const coursePar =
+    Number(firstDefined(json?.par, json?.total_par)) ||
+    holes.reduce((sum, h) => sum + h.par, 0) ||
+    72;
   const rawTees = Array.isArray(json?.tees) ? json.tees : [];
   const tees = (rawTees.length ? rawTees : [{}]).map((t, i) => {
-    const holes = t.holes ? mapHoles(t.holes) : courseHoles;
-    const par =
-      Number(firstDefined(t.par, json?.par)) ||
-      holes.reduce((sum, h) => sum + h.par, 0) ||
-      72;
+    const base = String(firstDefined(t.tee_name, t.name, t.tee_color, t.color, `Tee ${i + 1}`));
+    const female = String(t.gender || '').toLowerCase() === 'female';
     return {
-      name: String(firstDefined(t.name, t.teeName, t.tee, t.color, `Tee ${i + 1}`)),
-      rating: Number(firstDefined(t.rating, t.courseRating, json?.rating)) || null,
-      slope: Number(firstDefined(t.slope, t.slopeRating, json?.slope)) || null,
-      yardage: Number(firstDefined(t.yardage, t.totalYards, t.yards, t.length)) || null,
-      par,
+      key: String(firstDefined(t.tee_key, `${base}-${i}`)), // unique React key (male/female dupes)
+      name: female ? `${base} (F)` : base,
+      rating: Number(firstDefined(t.course_rating, t.rating)) || null,
+      slope: Number(firstDefined(t.slope, t.slope_rating)) || null,
+      yardage: Number(firstDefined(t.yardage, t.yards, t.length)) || null,
+      par: Number(firstDefined(t.par, coursePar)) || coursePar,
       holes,
     };
   });
   return {
     id: String(firstDefined(json?.id, json?.courseId, fallbackId, '')),
-    name: String(firstDefined(json?.name, json?.courseName, 'Course')),
-    city: String(firstDefined(json?.city, json?.location?.city, '') || ''),
-    state: String(firstDefined(json?.state, json?.location?.state, '') || ''),
+    name: String(firstDefined(json?.name, json?.course_name, json?.courseName, 'Course')),
+    city: String(firstDefined(json?.city, '') || ''),
+    state: String(firstDefined(json?.state, '') || ''),
     tees,
   };
 }
@@ -181,7 +145,7 @@ function apiError(message, extra = {}) {
 export async function searchCourses(query) {
   const q = String(query || '').trim();
   if (q.length < 3) return [];
-  const url = `${OPENGOLF_BASE}/courses/search?q=${encodeURIComponent(q)}`;
+  const url = `${OPENGOLF_BASE}/v1/courses/search?q=${encodeURIComponent(q)}`;
   // eslint-disable-next-line no-console
   console.info('[courseApi] SEARCH GET', url);
   let res;
@@ -219,10 +183,7 @@ export async function getScorecard(courseId) {
   const cached = getCachedScorecard(courseId);
   if (cached) return { scorecard: cached, source: 'cache', durationMs: 0 };
 
-  const key = getGolfApiKey();
-  if (!key) throw apiError('A golfApi.io API key is required to load course data.', { code: 'no_key' });
-
-  const url = `${GOLFAPI_BASE}/courses/${encodeURIComponent(courseId)}`;
+  const url = `${OPENGOLF_BASE}/api/v1/courses/${encodeURIComponent(courseId)}`;
   // Diagnostic: the exact id from the search result and the URL built from it.
   // eslint-disable-next-line no-console
   console.info('[courseApi] SCORECARD fetch: courseId=%o url=%s', courseId, url);
@@ -230,9 +191,7 @@ export async function getScorecard(courseId) {
   const start = Date.now();
   let res;
   try {
-    res = await fetch(url, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${key}` },
-    });
+    res = await fetch(url, { headers: { Accept: 'application/json' } });
   } catch (e) {
     throw apiError(`Could not reach the course service. GET ${url}`, {
       code: 'network',
@@ -241,12 +200,6 @@ export async function getScorecard(courseId) {
   }
   // eslint-disable-next-line no-console
   console.info('[courseApi] SCORECARD response: status=%d url=%s', res.status, url);
-  if (res.status === 401 || res.status === 403) {
-    throw apiError(`That golfApi.io key was rejected (${res.status}). GET ${url}`, {
-      status: res.status,
-      code: 'bad_key',
-    });
-  }
   if (!res.ok) {
     // Include the full URL + id in the message so it's readable in the on-screen
     // error (no devtools needed on a phone).

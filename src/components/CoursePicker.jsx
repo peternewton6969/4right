@@ -212,9 +212,8 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
       logEvent(EVENTS.TEE_SELECTION_SHOWN, { courseName: sc.name });
       step('tee_selection');
     } catch (err) {
-      // The API key comes from the build-time env var (VITE_GOLFAPI_KEY), never
-      // from the user — so any key problem is a config error surfaced as a plain
-      // message, not a prompt to re-enter a key.
+      // OpenGolfAPI is keyless — a failure here is a network/data issue, surfaced
+      // as a plain message (the message includes the URL + course id for support).
       setFetchError(err?.message || 'Could not load this course.');
     } finally {
       setFetching(false);
@@ -278,7 +277,7 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
         <span style={styles.sublabel}>{scorecard.name} — Select Tees</span>
         <ul style={styles.list}>
           {scorecard.tees.map((t) => (
-            <li key={t.name}>
+            <li key={t.key ?? t.name}>
               <button type="button" style={styles.teeRow} onClick={() => handleSelectTee(t)}>
                 <span style={styles.teeName}>{t.name}</span>
                 <span style={styles.teeMeta}>{teeSummary(t)}</span>

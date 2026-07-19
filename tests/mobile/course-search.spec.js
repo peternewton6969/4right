@@ -10,11 +10,13 @@ const PLAYERS = [
   { id: 'p2', firstName: 'Sean', lastName: 'Cunningham', nickname: 'SC', handicapIndex: 8.1 },
 ];
 
-const holes18 = () =>
+// OpenGolfAPI detail shape: per-course holes_data (with handicap_index) + tees
+// (course_rating/slope/yardage, no per-tee holes).
+const holesData = () =>
   Array.from({ length: 18 }, (_, i) => ({
     number: i + 1,
     par: [3, 4, 5][i % 3],
-    strokeIndex: i + 1,
+    handicap_index: i + 1,
   }));
 
 const SEARCH_BODY = {
@@ -30,44 +32,38 @@ const SCORECARD_BODY = {
   city: 'Pebble Beach',
   state: 'CA',
   par: 72,
+  holes: 18,
+  holes_data: holesData(),
   tees: [
-    { name: 'Blue', rating: 74.1, slope: 143, yardage: 6800, holes: holes18() },
-    { name: 'White', rating: 71.2, slope: 135, yardage: 6100, holes: holes18() },
+    { tee_key: 'blue-male', tee_name: 'Blue', gender: 'Male', course_rating: 74.1, slope: 143, par: 72, yardage: 6800 },
+    { tee_key: 'white-male', tee_name: 'White', gender: 'Male', course_rating: 71.2, slope: 135, par: 72, yardage: 6100 },
   ],
 };
 
-async function mockApis(page, { scorecardCount } = {}) {
+// Both search and course detail are served by OpenGolfAPI (one provider), on the
+// same host with different paths — branch on the URL.
+async function mockApis(page) {
   const counts = { search: 0, scorecard: 0 };
   await page.route('**://api.opengolfapi.org/**', async (route) => {
-    counts.search += 1;
+    const url = route.request().url();
+    const isSearch = url.includes('/courses/search');
+    if (isSearch) counts.search += 1;
+    else counts.scorecard += 1;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       headers: { 'access-control-allow-origin': '*' },
-      body: JSON.stringify(SEARCH_BODY),
-    });
-  });
-  await page.route('**://www.golfapi.io/**', async (route) => {
-    counts.scorecard += 1;
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      headers: { 'access-control-allow-origin': '*' },
-      body: JSON.stringify(SCORECARD_BODY),
+      body: JSON.stringify(isSearch ? SEARCH_BODY : SCORECARD_BODY),
     });
   });
   return counts;
 }
 
-async function openRoundSetup(page, { withKey = true } = {}) {
+async function openRoundSetup(page) {
   await page.goto('/#/home');
-  await page.evaluate(
-    ({ players, withKey }) => {
-      localStorage.setItem('roastandrake_players', JSON.stringify(players));
-      if (withKey) localStorage.setItem('roastandrake_golfapi_key', 'gk_test_key');
-    },
-    { players: PLAYERS, withKey },
-  );
+  await page.evaluate((players) => {
+    localStorage.setItem('roastandrake_players', JSON.stringify(players));
+  }, PLAYERS);
   await page.goto('/#/round/setup?players=p1,p2');
   await expect(page.getByLabel('Course search')).toBeVisible();
 }
@@ -158,7 +154,7 @@ test('second selection of the same course is served from cache', async ({ page }
 
 test('suggested (Prestonwood) course loads instantly without any fetch', async ({ page }) => {
   const counts = await mockApis(page);
-  await openRoundSetup(page, { withKey: false });
+  await openRoundSetup(page);
 
   await page.getByRole('button', { name: 'Meadows', exact: true }).tap();
   await expect(page.getByText('✓ Prestonwood Meadows')).toBeVisible();

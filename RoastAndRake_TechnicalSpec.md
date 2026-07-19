@@ -56,10 +56,10 @@ Round Setup gains a full course-search experience, and a new analytics module
 instruments that flow with an admin dashboard. Test totals rose to **132 Vitest
 tests + 8 mobile WebKit tests**; the engine is unchanged.
 
-1. **Course search & fetch** — the old three hardcoded course buttons are replaced by a search + results + tee-selection flow (§1.2, §1.8, §4.2 Screen 3): after 3 characters, a debounced query to **OpenGolfAPI** (`api.opengolfapi.org`) returns matching courses (name, city, state); tapping a result loads the full scorecard **cache-first**, fetching from **golfApi.io** on a miss and caching the normalized scorecard by course id. The three **Prestonwood courses remain as verified, hardcoded "suggested" courses** that load instantly and bypass the API entirely.
+1. **Course search & fetch** — the old three hardcoded course buttons are replaced by a search + results + tee-selection flow (§1.2, §1.8, §4.2 Screen 3): after 3 characters, a debounced query to **OpenGolfAPI** (`api.opengolfapi.org`) returns matching courses (name, city, state); tapping a result loads the full scorecard **cache-first**, fetching from OpenGolfAPI's detail endpoint on a miss and caching the normalized scorecard by course id. Both search and detail use OpenGolfAPI (one provider, keyless). The three **Prestonwood courses remain as verified, hardcoded "suggested" courses** that load instantly and bypass the API entirely.
 2. **Tee selection** — after a scorecard loads, a tee picker lets the user choose a tee set (name, rating, slope, yardage); the chosen tee resolves to the round-ready course shape (§1.2). Hardcoded courses skip tee selection (single implicit tee).
 3. **Course persistence** — a fetched/tee-resolved course is upserted into `fourright_courses` (`store.upsertCourse`) so every screen that resolves `round.courseId` via `getCourses()` keeps working unchanged.
-4. **Second external key** — the golfApi.io key was originally entered once via an inline in-app field (later superseded: it now comes from the `VITE_GOLFAPI_KEY` build-time env var so the user never enters it — see §1.8). API layer: `src/services/courseApi.js`. **The live OpenGolfAPI / golfApi.io response shapes are not verified against production; requests are coded against documented assumed shapes and normalized through `map*` helpers — adjust only those helpers if the real contract differs.**
+4. **Course API provider** — course search + detail both use **OpenGolfAPI**, which is **keyless** (public, ODbL). Earlier builds tried a golfApi.io key (inline field, then a `VITE_GOLFAPI_KEY` env var) for a separate scorecard provider; that was dropped when the fetch moved to OpenGolfAPI's own detail endpoint (single provider fixed a cross-provider id 404, and removed the key from the bundle entirely). API layer: `src/services/courseApi.js`; the live contract is handled solely in the `map*` normalizers.
 5. **Analytics module** — `src/utils/analytics.js`: `logEvent(type, data)` appends timestamped events to `localStorage` under `fourright_analytics`, capped at 1000, plus a pure `summarizeEvents()`. Instruments the course-selection funnel: search opened, first character typed, results displayed (count + source), course tapped, fetch started, fetch completed (duration ms + `cache`/`live` source), tee selection shown, tee selected, selection confirmed, selection abandoned (last step) (§1.8).
 6. **Analytics dashboard** — new admin screen at `#/analytics` (§4.2 Screen 9): average fetch time cache-vs-live, completion rate, abandonment by step, top courses, and the last 50 raw events, with a Clear action. Reached by URL; not linked from the app chrome.
 7. **Character Notes iOS fix** — the Add Note button is no longer `disabled` on empty React state and the note field is now **uncontrolled** (read via a ref at tap time). On iOS, dictation/autocorrect can update the field without a timely `onChange`, which previously left the button greyed/dead after the first note. The empty-field guard now lives inside the handler (§4.2 Screen 2).
@@ -79,7 +79,7 @@ Most state lives in browser local storage. No backend. No auth. Core keys:
 Plus, added for the course-search + analytics features (§1.8):
 
 - `roastandrake_course_cache` -- fetched scorecards, keyed by course id
-- `roastandrake_golfapi_key` -- golfApi.io key, local-dev fallback only (the key normally comes from the `VITE_GOLFAPI_KEY` env var; see §1.8)
+- (no course-API key — OpenGolfAPI is keyless; the former `roastandrake_golfapi_key` is unused/retired)
 - `roastandrake_analytics` -- course-selection event log (capped at 1000)
 - `roastandrake_anthropic_key` -- Claude API key for the AI summary (this device only, §1.7)
 
@@ -382,16 +382,27 @@ This is a **profile** feature, independent of any round.
 ### 1.8 Course Search, Cache & Analytics
 
 The course selection in Round Setup (§4.2 Screen 3) can pull any course, not just
-the three pre-loaded ones. Two external services are used (this is the app's second
-external dependency after the Claude summary), both called directly from the browser.
+the three pre-loaded ones. **Both search and course detail use OpenGolfAPI** — one
+provider, so the id returned by search is valid for the detail call. (An earlier
+build searched OpenGolfAPI but fetched from golfApi.io; the id namespaces differ, so
+every fetch 404'd. Fixed by using OpenGolfAPI for both.) OpenGolfAPI is public and
+**keyless** (ODbL-licensed): there is no API key anywhere — nothing entered by the
+user, nothing embedded in the build. Calls go directly from the browser.
 
-**Search** — `GET https://api.opengolfapi.org/v1/courses/search?q={query}` (public, no
-key). Fired after 3+ characters, debounced. Normalized to `[{ id, name, city, state }]`.
+**Search** — `GET https://api.opengolfapi.org/v1/courses/search?q={query}`. Fired
+after 3+ characters, debounced. Normalized to `[{ id, name, city, state }]`.
 
 **Scorecard fetch** — cache-first. On tapping a result the app checks
-`fourright_course_cache[courseId]`; a hit is served immediately (`source: "cache"`),
-a miss fetches `GET https://www.golfapi.io/api/v2.3/courses/{id}` (with the golfApi.io key)
-and stores the normalized scorecard. The normalized scorecard shape:
+`roastandrake_course_cache[courseId]`; a hit is served immediately (`source: "cache"`),
+a miss fetches `GET https://api.opengolfapi.org/api/v1/courses/{id}` (note the
+`/api/v1` prefix, distinct from search's `/v1`) and stores the normalized scorecard.
+
+The OpenGolfAPI detail response carries per-course holes in `holes_data`
+(`{ number, par, handicap_index }` — `handicap_index` is the stroke index, per course)
+and a `tees` array (`{ tee_key, tee_name, gender, course_rating, slope, par, yardage }`,
+no per-tee holes). `mapScorecard` normalizes this to the shape the app consumes — every
+tee shares the per-course holes; female tees get a `(F)` name suffix and `tee_key` is
+the unique React key:
 
 ```json
 {
@@ -400,27 +411,17 @@ and stores the normalized scorecard. The normalized scorecard shape:
   "city": "Pebble Beach",
   "state": "CA",
   "tees": [
-    { "name": "Blue", "rating": 74.1, "slope": 143, "yardage": 6800, "par": 72,
-      "holes": [ { "number": 1, "par": 4, "hcpRank": 7, "isParThree": false } ] }
+    { "key": "blue-male", "name": "Blue", "rating": 74.9, "slope": 144, "yardage": 6802, "par": 72,
+      "holes": [ { "number": 1, "par": 4, "hcpRank": 6, "isParThree": false } ] }
   ]
 }
 ```
 
-**Key:** the golfApi.io key is provided at build time via the `VITE_GOLFAPI_KEY`
-environment variable (`.env`, git-ignored), so the user never sees or enters it —
-`getGolfApiKey()` returns `import.meta.env.VITE_GOLFAPI_KEY` (with a `localStorage`
-key, `roastandrake_golfapi_key`, kept only as a local-dev fallback). A rejected key
-surfaces as an error, not a prompt. **SECURITY:** Vite inlines `VITE_*` vars into the
-client bundle, so on the public GitHub Pages deploy this key is embedded in the
-shipped JS and is extractable by anyone — use a usage-restricted / rotatable key.
-(This differs from the Anthropic key in §1.7, which is entered by the user and never
-bundled.)
-
-**API caveat:** **The live OpenGolfAPI / golfApi.io response shapes are not
-verified against production** — requests are coded against the documented assumed
-shapes and funneled through the `mapSearchResults` / `mapScorecard` / `buildCourseFromTee`
-helpers in `src/services/courseApi.js`; if a live contract differs, only those helpers
-change. The app otherwise consumes the normalized shape above.
+**API caveat:** the OpenGolfAPI contract is handled entirely in the `mapSearchResults`
+/ `mapScorecard` / `buildCourseFromTee` helpers in `src/services/courseApi.js`; if the
+live contract shifts, adjust only those helpers. The app otherwise consumes the
+normalized shape above. (`courseApi` also logs the exact request URLs + ids to the
+console, and includes the URL + id in any fetch-error message, to aid diagnosis.)
 
 **Analytics event log** (`src/utils/analytics.js`) — `logEvent(type, data)` appends a
 `{ type, t (epoch ms), iso, ...data }` record to `localStorage` under `fourright_analytics`,
@@ -1006,7 +1007,7 @@ Single scrollable screen for the 2-4 players passed from selection. Back arrow r
 2. **Course** — a search-driven picker (`CoursePicker.jsx`, §1.8):
    - **Suggested (verified)** — the three Prestonwood courses as chips; tapping one selects it instantly (no API, `source: "hardcoded"`), skipping tee selection.
    - **Search** — a text input; after 3 characters a debounced query returns a tappable results list showing course **name** and **city, state**. (< 3 chars shows a "keep typing" hint.)
-   - **Fetch + tee selection** — tapping a result loads its scorecard cache-first (§1.8); the golfApi.io key comes from the `VITE_GOLFAPI_KEY` env var (no user prompt). Once loaded, a **tee list** shows each tee's name with rating · slope · yardage; tapping a tee resolves the round-ready course. A fetch error surfaces inline in red.
+   - **Fetch + tee selection** — tapping a result loads its scorecard cache-first from OpenGolfAPI (§1.8; keyless, no user prompt). Once loaded, a **tee list** shows each tee's name with rating · slope · yardage; tapping a tee resolves the round-ready course. A fetch error surfaces inline in red (with the failing URL + id).
    - **Selected state** — once a course + tee is chosen, a green-bordered summary card shows the course, tee, rating/slope, and par, with a **Change course** button to reset.
    - Errors (search/fetch/rejected key) surface inline in red. Every step emits an analytics event (§1.8); leaving setup without confirming logs an abandonment.
 3. **Games**
@@ -1194,7 +1195,7 @@ roastandrake/
       NumericKeypad.jsx      -- custom in-app numeric bottom-sheet keypad
     services/
       characterSummary.js    -- Claude API call (claude-sonnet-4-6) for the AI character summary
-      courseApi.js           -- OpenGolfAPI search + golfApi.io scorecard fetch, key mgmt, cache, normalizers (§1.8)
+      courseApi.js           -- OpenGolfAPI search + scorecard fetch (keyless), cache, normalizers (§1.8)
     utils/
       generateId.js
       playerUtils.js         -- getPlayerName / getPlayerFullName
