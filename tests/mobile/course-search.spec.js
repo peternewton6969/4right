@@ -47,7 +47,7 @@ async function mockApis(page, { scorecardCount } = {}) {
       body: JSON.stringify(SEARCH_BODY),
     });
   });
-  await page.route('**://api.golfapi.io/**', async (route) => {
+  await page.route('**://www.golfapi.io/**', async (route) => {
     counts.scorecard += 1;
     await route.fulfill({
       status: 200,

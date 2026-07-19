@@ -390,7 +390,7 @@ key). Fired after 3+ characters, debounced. Normalized to `[{ id, name, city, st
 
 **Scorecard fetch** — cache-first. On tapping a result the app checks
 `fourright_course_cache[courseId]`; a hit is served immediately (`source: "cache"`),
-a miss fetches `GET https://api.golfapi.io/v1/courses/{id}` (with the golfApi.io key)
+a miss fetches `GET https://www.golfapi.io/api/v2.3/courses/{id}` (with the golfApi.io key)
 and stores the normalized scorecard. The normalized scorecard shape:
 
 ```json

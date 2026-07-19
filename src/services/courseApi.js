@@ -11,7 +11,7 @@
 // shape { id, name, city, state, tees:[{ name, rating, slope, yardage, par, holes }] }.
 
 const OPENGOLF_BASE = 'https://api.opengolfapi.org/v1';
-const GOLFAPI_BASE = 'https://api.golfapi.io/v1';
+const GOLFAPI_BASE = 'https://www.golfapi.io/api/v2.3';
 
 const KEY_STORAGE = 'roastandrake_golfapi_key';
 const CACHE_STORAGE = 'roastandrake_course_cache'; // { [courseId]: normalizedScorecard }
