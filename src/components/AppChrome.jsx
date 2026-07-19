@@ -26,9 +26,7 @@ function NavDrawer({ navigate, active, onClose, menuActions }) {
     <>
       <div className="drawer-backdrop" onClick={onClose} />
       <nav className="drawer" aria-label="Main navigation">
-        <div className="drawer-head">
-          4 Right<span className="bang">!</span>
-        </div>
+        <div className="drawer-head">Roast and Rake</div>
         <div className="drawer-links">
           {NAV_LINKS.map((link) => (
             <button

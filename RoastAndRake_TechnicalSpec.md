@@ -1,5 +1,5 @@
-# 4 Right! -- Technical Specification v1.4
-**App Name:** 4 Right!
+# Roast and Rake -- Technical Specification v1.4
+**App Name:** Roast and Rake (formerly "4 Right!")
 **Version:** 1.4 (single-user, local storage; external APIs for the optional AI summary and course search)
 **Platform:** React SPA, mobile-first, deployed to GitHub Pages (custom domain `roastandrake.com`)
 **Last Updated:** July 19, 2026
@@ -942,7 +942,7 @@ Engine must reproduce these net figures exactly.
 
 Displays:
 - Full-bleed background image `/golf-bg.jpg` with a navy overlay for contrast.
-- App name "4 Right!" and the tagline "Play Fair. Pay Up. Repeat."
+- App name "Roast and Rake" and the tagline "Play Fair. Pay Up. Repeat."
 - Two buttons: "New Round" and "View Rounds"
 - Active round indicator if a round is in progress ("Resume Round -- Hole 7")
 
@@ -1151,7 +1151,7 @@ Component: `src/components/Analytics.jsx`.
 ## 5. File Structure
 
 ```
-fourright/
+roastandrake/
   src/
     engine/
       courseHandicap.js      -- CH and differential calculations

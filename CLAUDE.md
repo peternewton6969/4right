@@ -1,4 +1,8 @@
-# 4 Right! Golf Scoring App
+# Roast and Rake Golf Scoring App
+
+(Formerly "4 Right!" — renamed 2026-07-19. The local project directory is still
+`C:\Projects\4Right` and the internal `fourright_*` localStorage keys are unchanged
+to preserve existing data.)
 
 This is a personal golf scoring app for a regular group at Prestonwood Country Club in Dallas.
 Core players: Peter Newton, Aaron Bailey, Sean Cunningham, Brooks Kaufman.
@@ -22,7 +26,7 @@ Apply these rules for every session without exception:
 - Project path: C:\Projects\4Right
 - Run tests with: npx vitest run
 - Start dev server with: npx vite
-- Spec file: FourRight_TechnicalSpec.md
+- Spec file: RoastAndRake_TechnicalSpec.md
 - Round size: 2-4 players per round. This is the current spec and supersedes the
   former "four players fixed per round" locked decision (spec section 8).
 

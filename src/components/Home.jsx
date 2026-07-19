@@ -3,7 +3,7 @@ import { getActiveRound } from '../storage/store.js';
 import AppHeader from './AppChrome.jsx';
 
 // Screen 1: Home (spec section 4.2).
-// - App name "4 Right!"
+// - App name "Roast and Rake"
 // - "New Round" and "View Rounds" buttons
 // - Active round indicator ("Resume Round — Hole 7") when a round is in progress.
 
@@ -39,9 +39,7 @@ export default function Home({ navigate }) {
       <AppHeader navigate={navigate} title="" tone="transparent" active="home" />
       <main className="screen home">
         <div className="home-top">
-          <h1 className="home-title">
-            4 Right<span className="bang">!</span>
-          </h1>
+          <h1 className="home-title">Roast and Rake</h1>
           <p className="home-tagline">Play Fair. Pay Up. Repeat.</p>
 
           {resumable && (
