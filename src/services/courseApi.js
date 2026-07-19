@@ -18,8 +18,18 @@ const CACHE_STORAGE = 'roastandrake_course_cache'; // { [courseId]: normalizedSc
 
 // --- golfApi.io key (entered once, kept on this device) ------------------------
 
-/** Read the stored golfApi.io key, or '' if none is saved on this device. */
+/**
+ * Resolve the golfApi.io key. Prefers the build-time env var VITE_GOLFAPI_KEY (set
+ * in .env) so the user never has to enter it; falls back to a key saved on this
+ * device (local dev without .env, or a legacy stored key).
+ *
+ * SECURITY: Vite inlines VITE_* vars into the client bundle at build time, so on a
+ * PUBLIC deploy the key is embedded in the shipped JS and extractable by anyone.
+ * Use a usage-restricted / rotatable golfApi.io key.
+ */
 export function getGolfApiKey() {
+  const envKey = import.meta.env?.VITE_GOLFAPI_KEY;
+  if (envKey) return String(envKey);
   try {
     return localStorage.getItem(KEY_STORAGE) || '';
   } catch {

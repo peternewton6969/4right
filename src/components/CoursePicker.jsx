@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  searchCourses,
-  getScorecard,
-  getCachedScorecard,
-  buildCourseFromTee,
-  hasGolfApiKey,
-  setGolfApiKey,
-  clearGolfApiKey,
-} from '../services/courseApi.js';
+import { searchCourses, getScorecard, buildCourseFromTee } from '../services/courseApi.js';
 import { logEvent, EVENTS } from '../utils/analytics.js';
 
 // Course selection for Round Setup. Replaces the old three hardcoded buttons with:
@@ -146,12 +138,9 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
 
-  const [activeCourse, setActiveCourse] = useState(null); // search row being loaded
   const [scorecard, setScorecard] = useState(null); // normalized, all tees
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState('');
-  const [needsKey, setNeedsKey] = useState(false);
-  const [keyDraft, setKeyDraft] = useState('');
 
   const openedRef = useRef(false); // search_opened logged once
   const firstCharRef = useRef(false); // first_character_typed logged once
@@ -206,11 +195,8 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
   }
 
   function resetInner() {
-    setActiveCourse(null);
     setScorecard(null);
     setFetchError('');
-    setNeedsKey(false);
-    setKeyDraft('');
   }
 
   async function doFetch(row) {
@@ -223,19 +209,13 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
       logEvent(EVENTS.FETCH_COMPLETED, { durationMs, source });
       sourceRef.current = source;
       setScorecard(sc);
-      setNeedsKey(false);
       logEvent(EVENTS.TEE_SELECTION_SHOWN, { courseName: sc.name });
       step('tee_selection');
     } catch (err) {
-      if (err?.code === 'bad_key') {
-        clearGolfApiKey();
-        setNeedsKey(true);
-        setFetchError('That key was rejected. Enter a valid golfApi.io key.');
-      } else if (err?.code === 'no_key') {
-        setNeedsKey(true);
-      } else {
-        setFetchError(err?.message || 'Could not load this course.');
-      }
+      // The API key comes from the build-time env var (VITE_GOLFAPI_KEY), never
+      // from the user — so any key problem is a config error surfaced as a plain
+      // message, not a prompt to re-enter a key.
+      setFetchError(err?.message || 'Could not load this course.');
     } finally {
       setFetching(false);
     }
@@ -244,24 +224,9 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
   function handleTapResult(row) {
     logEvent(EVENTS.COURSE_TAPPED, { courseName: row.name });
     step('course_tapped');
-    setActiveCourse(row);
     setScorecard(null);
     setFetchError('');
-    // If we'd need a live fetch but have no key, collect it first (no fetch logged yet).
-    if (!getCachedScorecard(row.id) && !hasGolfApiKey()) {
-      setNeedsKey(true);
-      return;
-    }
-    doFetch(row);
-  }
-
-  function handleSaveKey() {
-    const k = keyDraft.trim();
-    if (k === '') return;
-    setGolfApiKey(k);
-    setKeyDraft('');
-    setNeedsKey(false);
-    if (activeCourse) doFetch(activeCourse);
+    doFetch(row); // getScorecard is cache-first; the key is supplied by the env var
   }
 
   function handleTapSuggested(course) {
@@ -328,34 +293,6 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
     );
   }
 
-  // --- Render: inline key entry (a live fetch needs a key) -----------------------
-  if (needsKey) {
-    return (
-      <div style={styles.wrap}>
-        <span style={styles.sublabel}>golfApi.io key needed for “{activeCourse?.name}”</span>
-        <div style={styles.keyRow}>
-          <input
-            type="password"
-            style={styles.input}
-            value={keyDraft}
-            placeholder="golfApi.io API key"
-            onChange={(e) => setKeyDraft(e.target.value)}
-            aria-label="golfApi.io API key"
-            autoComplete="off"
-          />
-          {fetchError !== '' && <span style={styles.error}>{fetchError}</span>}
-          <button type="button" style={styles.primaryBtn} onClick={handleSaveKey}>
-            Save Key &amp; Load
-          </button>
-          <span style={styles.hint}>Stored on this device only — never uploaded or committed.</span>
-          <button type="button" style={styles.change} onClick={handleChange}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // --- Render: suggested + search + results --------------------------------------
   return (
     <div style={styles.wrap}>
@@ -394,7 +331,7 @@ export default function CoursePicker({ suggested, value, onChange, onStep }) {
       {fetching && <span style={styles.hint}>Loading course…</span>}
       {searching && <span style={styles.hint}>Searching…</span>}
       {searchError !== '' && <span style={styles.error}>{searchError}</span>}
-      {fetchError !== '' && !needsKey && <span style={styles.error}>{fetchError}</span>}
+      {fetchError !== '' && <span style={styles.error}>{fetchError}</span>}
 
       {results.length > 0 && (
         <ul style={styles.list}>
