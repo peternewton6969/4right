@@ -1,7 +1,7 @@
 # 4 Right! -- Technical Specification v1.4
 **App Name:** 4 Right!
 **Version:** 1.4 (single-user, local storage; external APIs for the optional AI summary and course search)
-**Platform:** React SPA, mobile-first, deployed to GitHub Pages (custom domain `4right.app`)
+**Platform:** React SPA, mobile-first, deployed to GitHub Pages (custom domain `roastandrake.com`)
 **Last Updated:** July 19, 2026
 **Tagline:** Play Fair. Pay Up. Repeat.
 
@@ -1195,7 +1195,7 @@ fourright/
     styles.css
   public/
     golf-bg.jpg              -- home screen background
-    CNAME                    -- custom domain (4right.app) for GitHub Pages
+    CNAME                    -- custom domain (roastandrake.com) for GitHub Pages
   index.html                 -- Vite entry HTML (project root)
   tests/
     engine/
