@@ -1,7 +1,7 @@
 # Roast and Rake -- Technical Specification v1.4
 **App Name:** Roast and Rake (formerly "4 Right!")
 **Version:** 1.4 (single-user, local storage; external APIs for the optional AI summary and course search)
-**Platform:** React SPA, mobile-first, deployed to GitHub Pages (custom domain `roastandrake.com`)
+**Platform:** React SPA, mobile-first, deployed to GitHub Pages (custom domain `app.roastandrake.com`; the apex `roastandrake.com` now serves the public landing page — separate repo)
 **Last Updated:** July 19, 2026
 **Tagline:** Play Fair. Pay Up. Repeat.
 
@@ -1210,7 +1210,7 @@ roastandrake/
     styles.css
   public/
     golf-bg.jpg              -- home screen background
-    CNAME                    -- custom domain (roastandrake.com) for GitHub Pages
+    CNAME                    -- custom domain (app.roastandrake.com) for GitHub Pages
   index.html                 -- Vite entry HTML (project root)
   tests/
     engine/
