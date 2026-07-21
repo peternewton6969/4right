@@ -8,6 +8,10 @@ import {
   clearAll,
   defaultCourses, loadDefaultCourses,
   migrateStorageKeys,
+  FAVORITE_COURSES_KEY,
+  getFavoriteCourses, setFavoriteCourses, isFavoriteCourse,
+  toggleFavoriteCourse, removeFavoriteCourse,
+  updateFavoriteCourseIfPresent, seedFavoriteCoursesIfEmpty,
 } from '../../src/storage/store.js';
 
 // A minimal localStorage stand-in for exercising the browser code path.
@@ -271,5 +275,118 @@ describe('store — migrateStorageKeys', () => {
 
     expect(fake.map.get('roastandrake_rounds')).toBe(JSON.stringify([{ id: 'r1' }]));
     expect(fake.map.has('fourright_rounds')).toBe(false);
+  });
+});
+
+// --- Favorite courses ("My Courses") -------------------------------------------
+
+// Local mirror of the store's internal normalizer, for building test fixtures.
+function toFav(c) {
+  return {
+    courseId: c.id ?? c.courseId,
+    courseName: c.name ?? c.courseName,
+    rating: c.rating ?? null,
+    slope: c.slope ?? null,
+    par: c.par ?? null,
+    holes: Array.isArray(c.holes)
+      ? c.holes.map((h) => ({ number: h.number, par: h.par, hcpRank: h.hcpRank, isParThree: h.isParThree ?? h.par === 3 }))
+      : [],
+  };
+}
+
+describe('store — favorite courses', () => {
+  const searchHit = { id: 'og-123', name: 'Pebble Beach' }; // bare pointer (no tee data)
+  const resolved = {
+    id: 'og-123',
+    name: 'Pebble Beach',
+    rating: 74.9,
+    slope: 144,
+    par: 72,
+    holes: [{ number: 1, par: 4, hcpRank: 6, isParThree: false }],
+  };
+
+  it('defaults to an empty list', () => {
+    expect(getFavoriteCourses()).toEqual([]);
+    expect(isFavoriteCourse('og-123')).toBe(false);
+  });
+
+  it('toggles a bare search result into a normalized pointer record', () => {
+    const { favorited, favorites } = toggleFavoriteCourse(searchHit);
+    expect(favorited).toBe(true);
+    expect(favorites).toEqual([
+      { courseId: 'og-123', courseName: 'Pebble Beach', rating: null, slope: null, par: null, holes: [] },
+    ]);
+    expect(isFavoriteCourse('og-123')).toBe(true);
+  });
+
+  it('toggling an existing favorite removes it', () => {
+    toggleFavoriteCourse(searchHit);
+    const { favorited, favorites } = toggleFavoriteCourse({ id: 'og-123', name: 'whatever' });
+    expect(favorited).toBe(false);
+    expect(favorites).toEqual([]);
+    expect(isFavoriteCourse('og-123')).toBe(false);
+  });
+
+  it('stores full hole/tee data when a resolved course is favorited', () => {
+    toggleFavoriteCourse(resolved);
+    expect(getFavoriteCourses()[0]).toEqual({
+      courseId: 'og-123',
+      courseName: 'Pebble Beach',
+      rating: 74.9,
+      slope: 144,
+      par: 72,
+      holes: [{ number: 1, par: 4, hcpRank: 6, isParThree: false }],
+    });
+  });
+
+  it('removeFavoriteCourse deletes by id', () => {
+    setFavoriteCourses([
+      toFav(resolved),
+      { courseId: 'x', courseName: 'X', rating: null, slope: null, par: null, holes: [] },
+    ]);
+    const next = removeFavoriteCourse('og-123');
+    expect(next.map((f) => f.courseId)).toEqual(['x']);
+  });
+
+  it('updateFavoriteCourseIfPresent upgrades an existing pointer, ignores absent ids', () => {
+    toggleFavoriteCourse(searchHit); // pointer, no holes
+    updateFavoriteCourseIfPresent(resolved); // same id, now round-ready
+    expect(getFavoriteCourses()[0].holes).toHaveLength(1);
+    expect(getFavoriteCourses()[0].par).toBe(72);
+
+    // A course that isn't favorited must not be added.
+    updateFavoriteCourseIfPresent({ id: 'not-saved', name: 'Nope', par: 70, holes: [] });
+    expect(getFavoriteCourses().map((f) => f.courseId)).toEqual(['og-123']);
+  });
+
+  it('rejects a toggle without a string id', () => {
+    expect(() => toggleFavoriteCourse({ name: 'no id' })).toThrow();
+  });
+
+  describe('seedFavoriteCoursesIfEmpty', () => {
+    it('seeds the three Prestonwood courses when the key is absent', () => {
+      const seeded = seedFavoriteCoursesIfEmpty();
+      expect(seeded).toHaveLength(3);
+      expect(seeded.map((f) => f.courseId)).toEqual([
+        'prestonwood-meadows',
+        'prestonwood-highlands',
+        'prestonwood-fairways',
+      ]);
+      expect(seeded[0]).toMatchObject({ courseName: 'Prestonwood Meadows', par: 72 });
+      expect(seeded[0].holes).toHaveLength(18);
+      expect(FAVORITE_COURSES_KEY).toBe('rr_favorite_courses');
+    });
+
+    it('does not overwrite an existing (even empty) favorites list', () => {
+      setFavoriteCourses([]); // key now present but empty (user cleared everything)
+      expect(seedFavoriteCoursesIfEmpty()).toEqual([]);
+      expect(getFavoriteCourses()).toEqual([]);
+    });
+
+    it('is a no-op when favorites already exist', () => {
+      toggleFavoriteCourse(resolved);
+      const after = seedFavoriteCoursesIfEmpty();
+      expect(after.map((f) => f.courseId)).toEqual(['og-123']);
+    });
   });
 });

@@ -1,7 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
-import { migrateStorageKeys, migratePlayers, loadDefaultCourses } from './storage/store.js';
+import {
+  migrateStorageKeys,
+  migratePlayers,
+  loadDefaultCourses,
+  seedFavoriteCoursesIfEmpty,
+} from './storage/store.js';
 import './styles.css';
 
 // One-time migration of the localStorage keys from the pre-rebrand `fourright_`
@@ -19,6 +24,11 @@ migratePlayers();
 // so existing installs pick up corrected course data (e.g. Highlands hole 16
 // par) without a manual storage reset.
 loadDefaultCourses();
+
+// Seed the "My Courses" favorites list with the three Prestonwood courses the first
+// time only (key-absent). Existing users keep their courses without any manual action;
+// a user who later clears their favorites keeps them cleared.
+seedFavoriteCoursesIfEmpty();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

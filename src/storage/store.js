@@ -120,6 +120,105 @@ export function upsertCourse(course) {
   return next;
 }
 
+// --- Favorite courses ("My Courses") -------------------------------------------
+//
+// A user-curated list of courses, persisted independently of the round-resolution
+// `courses` key so it survives across sessions and the startup re-seed. Each record
+// is { courseId, courseName, rating, slope, par, holes:[{number,par,hcpRank,isParThree}] }.
+// A record whose `holes` is populated is "round-ready" (selectable without a re-fetch,
+// e.g. the pre-seeded Prestonwood courses); a record added from a bare search result
+// carries only id/name until it is resolved through a tee, which upgrades it in place.
+
+export const FAVORITE_COURSES_KEY = 'rr_favorite_courses';
+
+export const getFavoriteCourses = () => readKey(FAVORITE_COURSES_KEY, []);
+export const setFavoriteCourses = (list) => writeKey(FAVORITE_COURSES_KEY, list);
+
+/** True if a course id is currently favorited. */
+export function isFavoriteCourse(courseId) {
+  return getFavoriteCourses().some((f) => f.courseId === courseId);
+}
+
+/** Normalize any course-shaped object into the stored favorite record. */
+function toFavoriteRecord(course) {
+  const holes = Array.isArray(course.holes)
+    ? course.holes.map((h) => ({
+        number: h.number,
+        par: h.par,
+        hcpRank: h.hcpRank,
+        isParThree: h.isParThree ?? h.par === 3,
+      }))
+    : [];
+  return {
+    courseId: course.id ?? course.courseId,
+    courseName: course.name ?? course.courseName,
+    rating: course.rating ?? null,
+    slope: course.slope ?? null,
+    par: course.par ?? null,
+    holes,
+  };
+}
+
+/**
+ * Add a course to favorites if absent, remove it if present (matched by id).
+ * @returns {{favorites: Array, favorited: boolean}} the new list and whether it is now favorited.
+ */
+export function toggleFavoriteCourse(course) {
+  const id = course?.id ?? course?.courseId;
+  if (typeof id !== 'string' || id === '') {
+    throw new Error('toggleFavoriteCourse: a course with a string id is required');
+  }
+  const list = getFavoriteCourses();
+  const idx = list.findIndex((f) => f.courseId === id);
+  if (idx >= 0) {
+    const favorites = list.filter((_, i) => i !== idx);
+    setFavoriteCourses(favorites);
+    return { favorites, favorited: false };
+  }
+  const favorites = [...list, toFavoriteRecord(course)];
+  setFavoriteCourses(favorites);
+  return { favorites, favorited: true };
+}
+
+/** Remove a favorite by course id. @returns {Array} the new favorites list. */
+export function removeFavoriteCourse(courseId) {
+  const favorites = getFavoriteCourses().filter((f) => f.courseId !== courseId);
+  setFavoriteCourses(favorites);
+  return favorites;
+}
+
+/** Delete the favorites key entirely (used by a full reset). */
+export const clearFavoriteCourses = () => clearKey(FAVORITE_COURSES_KEY);
+
+/**
+ * Replace an existing favorite with a fully-resolved (round-ready) version, but only
+ * if that course is already favorited. Called after a tee is chosen so a favorite
+ * added from a bare search result gains its rating/slope/par/holes for next time.
+ * @returns {Array} the (possibly unchanged) favorites list.
+ */
+export function updateFavoriteCourseIfPresent(course) {
+  const id = course?.id ?? course?.courseId;
+  const list = getFavoriteCourses();
+  const idx = list.findIndex((f) => f.courseId === id);
+  if (idx < 0) return list;
+  const favorites = list.map((f, i) => (i === idx ? toFavoriteRecord(course) : f));
+  setFavoriteCourses(favorites);
+  return favorites;
+}
+
+/**
+ * Seed the three Prestonwood courses into favorites the first time only — when the
+ * key has never been written. A user who later removes every favorite keeps it empty
+ * (we key off key-absence, not list length, so seeds are not resurrected).
+ * @returns {Array} the favorites list after seeding.
+ */
+export function seedFavoriteCoursesIfEmpty() {
+  if (backend().getItem(FAVORITE_COURSES_KEY) != null) return getFavoriteCourses();
+  const seeded = defaultCourses().map(toFavoriteRecord);
+  setFavoriteCourses(seeded);
+  return seeded;
+}
+
 // --- Rounds (history) ----------------------------------------------------------
 
 export const getRounds = () => readKey(STORAGE_KEYS.rounds, []);
@@ -132,12 +231,13 @@ export const getActiveRound = () => readKey(STORAGE_KEYS.activeRound, null);
 export const setActiveRound = (round) => writeKey(STORAGE_KEYS.activeRound, round);
 export const clearActiveRound = () => clearKey(STORAGE_KEYS.activeRound);
 
-/** Clear all four keys (convenience for a full reset). */
+/** Clear all top-level keys (convenience for a full reset). */
 export function clearAll() {
   clearPlayers();
   clearCourses();
   clearRounds();
   clearActiveRound();
+  clearFavoriteCourses();
 }
 
 // --- Player profile API (upsert / delete / lookup, validated) ------------------

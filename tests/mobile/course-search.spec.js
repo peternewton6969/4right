@@ -80,7 +80,9 @@ test('search → live fetch → tee select → confirm logs the full funnel', as
   await search.click();
   await search.fill('peb');
 
-  const result = page.getByRole('button', { name: /Pebble Beach Golf Links/ });
+  // Each result row is now [main select button, star toggle] — both carry the course
+  // name in their accessible name, so target the row's main button with .first().
+  const result = page.getByRole('button', { name: /Pebble Beach Golf Links/ }).first();
   await expect(result).toBeVisible();
   await result.tap();
 
@@ -133,7 +135,7 @@ test('second selection of the same course is served from cache', async ({ page }
   const search = page.getByLabel('Course search');
   await search.click();
   await search.fill('peb');
-  await page.getByRole('button', { name: /Pebble Beach Golf Links/ }).tap();
+  await page.getByRole('button', { name: /Pebble Beach Golf Links/ }).first().tap();
   await page.getByRole('button', { name: /Blue/ }).tap();
   await expect(page.getByText('✓ Pebble Beach Golf Links')).toBeVisible();
 
@@ -141,7 +143,7 @@ test('second selection of the same course is served from cache', async ({ page }
   await page.getByRole('button', { name: 'Change course' }).tap();
   await search.click();
   await search.fill('peb');
-  await page.getByRole('button', { name: /Pebble Beach Golf Links/ }).tap();
+  await page.getByRole('button', { name: /Pebble Beach Golf Links/ }).first().tap();
   await page.getByRole('button', { name: /White/ }).tap();
   await expect(page.getByText('✓ Pebble Beach Golf Links')).toBeVisible();
 
@@ -152,18 +154,67 @@ test('second selection of the same course is served from cache', async ({ page }
   expect(fetchDone.map((e) => e.source)).toEqual(['live', 'cache']);
 });
 
-test('suggested (Prestonwood) course loads instantly without any fetch', async ({ page }) => {
+test('My Courses is pre-seeded with the Prestonwood courses (no static suggested list)', async ({ page }) => {
+  await mockApis(page);
+  await openRoundSetup(page);
+
+  // The old "Suggested (verified)" hardcoded chip list is gone; favorites replace it.
+  await expect(page.getByText('Suggested (verified)')).toHaveCount(0);
+  await expect(page.getByText('My Courses')).toBeVisible();
+
+  const favs = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('rr_favorite_courses') || '[]'),
+  );
+  expect(favs.map((f) => f.courseId)).toEqual([
+    'prestonwood-meadows',
+    'prestonwood-highlands',
+    'prestonwood-fairways',
+  ]);
+});
+
+test('a seeded Prestonwood favorite selects instantly without any fetch', async ({ page }) => {
   const counts = await mockApis(page);
   await openRoundSetup(page);
 
-  await page.getByRole('button', { name: 'Meadows', exact: true }).tap();
+  // Tap the favorite's main (select) button — .first() skips its star toggle.
+  await page.getByRole('button', { name: /Prestonwood Meadows/ }).first().tap();
   await expect(page.getByText('✓ Prestonwood Meadows')).toBeVisible();
   await page.getByRole('button', { name: 'Start Round' }).tap();
 
-  expect(counts.scorecard).toBe(0); // hardcoded bypasses the API
+  expect(counts.scorecard).toBe(0); // round-ready favorite bypasses the API
   const events = await analytics(page);
   const confirmed = events.find((e) => e.type === 'selection_confirmed');
-  expect(confirmed).toMatchObject({ courseName: 'Prestonwood Meadows', source: 'hardcoded' });
+  expect(confirmed).toMatchObject({ courseName: 'Prestonwood Meadows', source: 'favorite' });
+});
+
+test('favoriting a search result persists across a page refresh', async ({ page }) => {
+  await mockApis(page);
+  await openRoundSetup(page);
+
+  const search = page.getByLabel('Course search');
+  await search.click();
+  await search.fill('peb');
+  await expect(page.getByRole('button', { name: /Pebble Beach Golf Links/ }).first()).toBeVisible();
+
+  // Tap the star on the first result to save it.
+  await page.getByRole('button', { name: 'Save Pebble Beach Golf Links to My Courses' }).tap();
+
+  // It is written to localStorage as a bare pointer (no tee data yet).
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('rr_favorite_courses') || '[]'),
+  );
+  expect(saved.map((f) => f.courseId)).toContain('pebble-1');
+
+  // Reload the setup screen — the favorite survives and shows under My Courses.
+  await page.reload();
+  await expect(page.getByLabel('Course search')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /Pebble Beach Golf Links/ }).first(),
+  ).toBeVisible();
+  const afterReload = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem('rr_favorite_courses') || '[]'),
+  );
+  expect(afterReload.map((f) => f.courseId)).toContain('pebble-1');
 });
 
 test('leaving setup without confirming logs an abandonment with the last step', async ({ page }) => {
@@ -173,7 +224,7 @@ test('leaving setup without confirming logs an abandonment with the last step', 
   const search = page.getByLabel('Course search');
   await search.click();
   await search.fill('peb');
-  await expect(page.getByRole('button', { name: /Pebble Beach Golf Links/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Pebble Beach Golf Links/ }).first()).toBeVisible();
 
   // Navigate away without confirming.
   await page.goto('/#/home');
@@ -190,7 +241,7 @@ test('analytics dashboard renders a summary from logged events', async ({ page }
   const search = page.getByLabel('Course search');
   await search.click();
   await search.fill('peb');
-  await page.getByRole('button', { name: /Pebble Beach Golf Links/ }).tap();
+  await page.getByRole('button', { name: /Pebble Beach Golf Links/ }).first().tap();
   await page.getByRole('button', { name: /Blue/ }).tap();
   await page.getByRole('button', { name: 'Start Round' }).tap();
 

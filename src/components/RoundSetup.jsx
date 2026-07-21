@@ -279,11 +279,11 @@ export default function RoundSetup({ navigate, playerIds }) {
     }
     return all;
   });
-  // Suggested (verified Prestonwood) courses — round-ready, load instantly, bypass
-  // the API entirely. Ensures they exist in the store so downstream lookups resolve.
-  const [suggested] = useState(() => {
-    const c = getCourses();
-    return c.length ? c : loadDefaultCourses();
+  // Ensure the round-resolution course store is populated (downstream screens resolve
+  // round.courseId through getCourses()). Course selection itself now runs through the
+  // "My Courses" favorites list inside CoursePicker.
+  useState(() => {
+    if (getCourses().length === 0) loadDefaultCourses();
   });
 
   const [date, setDate] = useState(today);
@@ -479,7 +479,6 @@ export default function RoundSetup({ navigate, playerIds }) {
         <section style={styles.section}>
           <span style={styles.label}>Course</span>
           <CoursePicker
-            suggested={suggested}
             value={selectedCourse}
             onChange={handleCourseChange}
             onStep={(s) => {
