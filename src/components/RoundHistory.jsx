@@ -16,6 +16,7 @@ import {
 import { getPlayerName } from '../utils/playerUtils.js';
 import { withLegacyRoundFields } from '../utils/roundModel.js';
 import AppHeader from './AppChrome.jsx';
+import RoundRulesModal from './RoundRulesModal.jsx';
 
 // Screen 8: Round History (spec section 4.2).
 // Completed rounds, most recent first. Each row shows course + date; tap to
@@ -130,6 +131,7 @@ function computeHoleDetails(round, course, perSkin) {
 export default function RoundHistory({ navigate }) {
   const [expanded, setExpanded] = useState(() => new Set());
   const [pendingDelete, setPendingDelete] = useState(null); // { id, courseName, date } | null
+  const [rulesGames, setRulesGames] = useState(null); // games map of the round whose rules are open
   const [version, setVersion] = useState(0); // bump to re-read history after a delete
 
   // Precompute a display view (settlement + winner) for each saved round.
@@ -180,6 +182,7 @@ export default function RoundHistory({ navigate }) {
         id: round.id,
         date: round.date,
         courseName: course?.name ?? 'Unknown course',
+        games: round.games,
         nameById,
         playerIds: round.playerRounds.map((pr) => pr.playerId),
         match,
@@ -241,6 +244,29 @@ export default function RoundHistory({ navigate }) {
 
                   {isOpen && r.settlement && (
                     <div className="history-detail">
+                      <button
+                        type="button"
+                        aria-label="Round rules"
+                        onClick={() => setRulesGames(r.games)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          minHeight: 36,
+                          padding: '0 12px',
+                          marginBottom: 8,
+                          borderRadius: 8,
+                          border: '1px solid #2d4a6b',
+                          background: 'transparent',
+                          color: '#22c55e',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span style={{ fontSize: 16, fontWeight: 800 }}>?</span> Rules
+                      </button>
+
                       {r.match && <div className="mp-status sm">{r.match.status}</div>}
 
                       <div className="settle-list">
@@ -380,6 +406,13 @@ export default function RoundHistory({ navigate }) {
           </div>
         )}
       </main>
+
+      {/* Rules quick-reference for the games in the expanded round */}
+      <RoundRulesModal
+        open={rulesGames !== null}
+        games={rulesGames}
+        onClose={() => setRulesGames(null)}
+      />
 
       {/* Delete confirmation — permanent removal from history */}
       {pendingDelete && (

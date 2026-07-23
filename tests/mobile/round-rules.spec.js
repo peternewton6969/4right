@@ -89,3 +89,25 @@ test('Scoreboard: the ? opens a rules modal showing only the active games', asyn
   await expect(page.getByRole('tab', { name: 'Round' })).toBeVisible();
   await verifyRulesModal(page);
 });
+
+test('Round History: the rules button on an expanded round shows only its games', async ({ page }) => {
+  const completed = {
+    ...ACTIVE_ROUND,
+    status: 'complete',
+    players: PLAYERS.map((p) => ({ id: p.id, name: `${p.firstName} ${p.lastName}` })),
+    completedAt: '2026-07-23T02:00:00.000Z',
+  };
+  await page.goto('/#/home');
+  await page.evaluate(
+    ({ players, rounds }) => {
+      localStorage.setItem('roastandrake_players', JSON.stringify(players));
+      localStorage.setItem('roastandrake_rounds', JSON.stringify(rounds));
+    },
+    { players: PLAYERS, rounds: [completed] },
+  );
+  await page.goto('/#/history');
+
+  // Expand the saved round, then open its rules quick-reference.
+  await page.getByRole('button', { name: /Prestonwood Meadows/ }).tap();
+  await verifyRulesModal(page);
+});
