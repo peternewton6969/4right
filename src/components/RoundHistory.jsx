@@ -17,6 +17,7 @@ import { getPlayerName } from '../utils/playerUtils.js';
 import { withLegacyRoundFields } from '../utils/roundModel.js';
 import AppHeader from './AppChrome.jsx';
 import RoundRulesModal from './RoundRulesModal.jsx';
+import CaptainsLogText from './CaptainsLogText.jsx';
 
 // Screen 8: Round History (spec section 4.2).
 // Completed rounds, most recent first. Each row shows course + date; tap to
@@ -183,6 +184,8 @@ export default function RoundHistory({ navigate }) {
         date: round.date,
         courseName: course?.name ?? 'Unknown course',
         games: round.games,
+        captainsPreRound: round.captainsPreRound ?? null,
+        captainsPostRound: round.captainsPostRound ?? null,
         nameById,
         playerIds: round.playerRounds.map((pr) => pr.playerId),
         match,
@@ -266,6 +269,27 @@ export default function RoundHistory({ navigate }) {
                       >
                         <span style={{ fontSize: 16, fontWeight: 800 }}>?</span> Rules
                       </button>
+
+                      {(r.captainsPostRound || r.captainsPreRound) && (
+                        <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+                          {r.captainsPostRound && (
+                            <>
+                              <span className="hbh-title" style={{ color: '#22c55e' }}>
+                                Captain&apos;s Log — Final Verdict
+                              </span>
+                              <CaptainsLogText text={r.captainsPostRound} />
+                            </>
+                          )}
+                          {r.captainsPreRound && (
+                            <>
+                              <span className="hbh-title" style={{ color: '#22c55e' }}>
+                                Captain&apos;s Log — Pre-Round
+                              </span>
+                              <CaptainsLogText text={r.captainsPreRound} />
+                            </>
+                          )}
+                        </div>
+                      )}
 
                       {r.match && <div className="mp-status sm">{r.match.status}</div>}
 

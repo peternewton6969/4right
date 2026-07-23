@@ -12,6 +12,7 @@ import {
   getFavoriteCourses, setFavoriteCourses, isFavoriteCourse,
   toggleFavoriteCourse, removeFavoriteCourse,
   updateFavoriteCourseIfPresent, seedFavoriteCoursesIfEmpty,
+  saveCaptainsPreRound, saveCaptainsPostRound,
 } from '../../src/storage/store.js';
 
 // A minimal localStorage stand-in for exercising the browser code path.
@@ -388,5 +389,34 @@ describe('store — favorite courses', () => {
       const after = seedFavoriteCoursesIfEmpty();
       expect(after.map((f) => f.courseId)).toEqual(['og-123']);
     });
+  });
+});
+
+// --- Captain's Commentary fields on the round ----------------------------------
+
+describe('store — captain\'s commentary', () => {
+  it('saves pre- and post-round summaries onto the active round without clobbering', () => {
+    setActiveRound({ id: 'r1', playerIds: ['p1', 'p2'], holes: [] });
+
+    saveCaptainsPreRound('The Captain sizes up the field.');
+    expect(getActiveRound().captainsPreRound).toBe('The Captain sizes up the field.');
+
+    saveCaptainsPostRound('Final verdict: everyone lost but Peter.');
+    const r = getActiveRound();
+    expect(r.captainsPostRound).toBe('Final verdict: everyone lost but Peter.');
+    expect(r.captainsPreRound).toBe('The Captain sizes up the field.'); // preserved
+  });
+
+  it('a regenerated summary overwrites the previous one', () => {
+    setActiveRound({ id: 'r1', playerIds: ['p1', 'p2'], holes: [] });
+    saveCaptainsPreRound('first');
+    saveCaptainsPreRound('second');
+    expect(getActiveRound().captainsPreRound).toBe('second');
+  });
+
+  it('returns null when there is no active round', () => {
+    clearActiveRound();
+    expect(saveCaptainsPreRound('x')).toBeNull();
+    expect(saveCaptainsPostRound('y')).toBeNull();
   });
 });

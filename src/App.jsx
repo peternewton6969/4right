@@ -4,6 +4,7 @@ import Players from './components/Players.jsx';
 import PlayerForm from './components/PlayerForm.jsx';
 import RoundSetup from './components/RoundSetup.jsx';
 import StrokeConfirmation from './components/StrokeConfirmation.jsx';
+import CaptainsCommentary from './components/CaptainsCommentary.jsx';
 import ScoreEntry from './components/ScoreEntry.jsx';
 import Scoreboard from './components/Scoreboard.jsx';
 import Settlement from './components/Settlement.jsx';
@@ -27,6 +28,8 @@ const ROUTES = {
   players: Players,
   'round-setup': RoundSetup,
   'stroke-confirmation': StrokeConfirmation,
+  'captains-preround': CaptainsCommentary,
+  'captains-postround': CaptainsCommentary,
   'score-entry': ScoreEntry,
   scoreboard: Scoreboard,
   settlement: Settlement,
@@ -91,6 +94,12 @@ export default function App() {
   }
   if (current.name === 'round-setup') {
     return <RoundSetup navigate={navigate} playerIds={current.params.playerIds} />;
+  }
+  if (current.name === 'captains-preround') {
+    return <CaptainsCommentary navigate={navigate} phase="pre" />;
+  }
+  if (current.name === 'captains-postround') {
+    return <CaptainsCommentary navigate={navigate} phase="post" />;
   }
 
   const Screen = ROUTES[current.name] ?? Home;

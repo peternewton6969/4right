@@ -241,7 +241,7 @@ export default function ScoreEntry({ navigate }) {
     setSnakePrompt(false);
 
     if (isLastHole) {
-      navigate('settlement');
+      navigate('captains-postround');
     } else {
       setCurrentHole(currentHole + 1);
     }
@@ -549,7 +549,7 @@ export default function ScoreEntry({ navigate }) {
                 className="btn btn-primary"
                 onClick={() => {
                   setEndPrompt(false);
-                  navigate('settlement');
+                  navigate('captains-postround');
                 }}
               >
                 End Round

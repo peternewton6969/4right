@@ -88,7 +88,7 @@ export default function StrokeConfirmation({ navigate }) {
   function handleLooksGood() {
     const activated = { ...round, status: 'active', updatedAt: new Date().toISOString() };
     setActiveRound(activated);
-    navigate('score-entry');
+    navigate('captains-preround');
   }
 
   return (

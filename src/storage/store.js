@@ -231,6 +231,23 @@ export const getActiveRound = () => readKey(STORAGE_KEYS.activeRound, null);
 export const setActiveRound = (round) => writeKey(STORAGE_KEYS.activeRound, round);
 export const clearActiveRound = () => clearKey(STORAGE_KEYS.activeRound);
 
+// --- Captain's Commentary (saved on the round record) --------------------------
+// The AI Captain's Log summaries live on the round object as `captainsPreRound` and
+// `captainsPostRound`. They are written to the ACTIVE round when the Captain proceeds
+// (Start Round / View Settlement) and carry through to history when the round is saved.
+
+/** Set one Captain's Commentary field on the active round. @returns updated round | null */
+function setActiveRoundField(field, value) {
+  const round = getActiveRound();
+  if (!round) return null;
+  const updated = { ...round, [field]: value, updatedAt: new Date().toISOString() };
+  setActiveRound(updated);
+  return updated;
+}
+
+export const saveCaptainsPreRound = (text) => setActiveRoundField('captainsPreRound', text);
+export const saveCaptainsPostRound = (text) => setActiveRoundField('captainsPostRound', text);
+
 /** Clear all top-level keys (convenience for a full reset). */
 export function clearAll() {
   clearPlayers();
